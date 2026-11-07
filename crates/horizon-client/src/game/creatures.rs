@@ -520,6 +520,19 @@ impl Game<'_> {
         at: [f64; 3],
         reason: Option<SpawnReason>,
     ) -> Option<u32> {
+        let mut skip = false;
+        self.spawn_mob_spawned_reason_tracked(kind, at, reason, &mut skip)
+    }
+    /// [`spawn_mob_spawned_reason`](Self::spawn_mob_spawned_reason) that also
+    /// reports whether a mod skipped vanilla's `finalizeSpawn`: the summon
+    /// path runs the jockeys itself and needs to know.
+    pub(super) fn spawn_mob_spawned_reason_tracked(
+        &mut self,
+        kind: &str,
+        at: [f64; 3],
+        reason: Option<SpawnReason>,
+        skip: &mut bool,
+    ) -> Option<u32> {
         // Ender Dragons have their own entity implementation rather than a
         // `Mob` entry.  Spawn eggs still go through `SpawnEggItem.spawnMob`,
         // so route this special entity through the same spawned-entity path.
@@ -528,7 +541,7 @@ impl Game<'_> {
         }
         // The spawn is not a natural one (no jockeys, the patrol leader roll
         // stays), but the mob is not persistent.
-        let id = self.spawn_mob_for_reason(kind, at, true, false, reason)?;
+        let id = self.spawn_mob_for_reason_tracked(kind, at, true, false, reason, skip)?;
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
             m.persistent = false;
         }
@@ -555,7 +568,21 @@ impl Game<'_> {
         scripted: bool,
         reason: Option<SpawnReason>,
     ) -> Option<u32> {
-        self.spawn_mob_reason(kind, at, persistent, scripted, !persistent, reason)
+        let mut skip = false;
+        self.spawn_mob_for_reason_tracked(kind, at, persistent, scripted, reason, &mut skip)
+    }
+    /// [`spawn_mob_for_reason`](Self::spawn_mob_for_reason) that also reports
+    /// whether a mod skipped vanilla's `finalizeSpawn`.
+    fn spawn_mob_for_reason_tracked(
+        &mut self,
+        kind: &str,
+        at: [f64; 3],
+        persistent: bool,
+        scripted: bool,
+        reason: Option<SpawnReason>,
+        skip: &mut bool,
+    ) -> Option<u32> {
+        self.spawn_mob_reason_tracked(kind, at, persistent, scripted, !persistent, reason, skip)
     }
     /// `spawn_mob_for` with the spawn reason's NATURAL flag explicit: only a
     /// natural spawn rolls the jockey mounts of zombie horses, husks and
@@ -869,8 +896,9 @@ impl Game<'_> {
             Some(a) => a,
             None => self.default_summon_position()?,
         };
+        let mut skip = false;
         let id = self
-            .spawn_mob_spawned_reason(kind, at, Some(SpawnReason::Command))
+            .spawn_mob_spawned_reason_tracked(kind, at, Some(SpawnReason::Command), &mut skip)
             .ok_or_else(|| format!("unknown or unsupported mob {kind}"))?;
         if baby && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
             m.extra.age = if m.species() == Species::Sniffer {
@@ -879,7 +907,9 @@ impl Game<'_> {
                 -24000
             };
         }
-        self.spawn_jockeys_reason(id, false, Some(SpawnReason::Command));
+        if !skip {
+            self.spawn_jockeys_reason(id, false, Some(SpawnReason::Command));
+        }
         Ok(id)
     }
     /// The `mobs` command: nearby mobs with position, health and running goals.

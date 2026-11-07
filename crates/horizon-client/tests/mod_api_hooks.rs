@@ -673,3 +673,92 @@ fn a_screen_background_hook_can_cancel_vanilla_gradient() {
         "inventory cancels vanilla gradient for blur/custom draw"
     );
 }
+
+/// #11639: a mob about to finish spawning. A mod changes the local difficulty
+/// and refuses the spawn, the next sees both, and a cancel skips the finalize
+/// and stops later mods.
+#[test]
+fn finalize_spawn_hands_later_mods_the_event_and_a_cancel_sets_skip() {
+    use horizon_client::mod_api::{FinalizeSpawnEvent, Flow, dispatch_finalize_spawn};
+    use std::sync::{Arc, Mutex};
+
+    struct TestHost;
+    impl Host for TestHost {}
+
+    #[derive(Default)]
+    struct Seen {
+        calls: Vec<(String, u8, f32, bool)>,
+    }
+
+    struct Raise(Arc<Mutex<Seen>>);
+    impl Hooks for Raise {
+        fn finalize_spawn(&self, _host: &dyn Host, event: &mut FinalizeSpawnEvent<'_>) -> Flow {
+            assert_eq!(event.dimension, "minecraft:overworld");
+            assert_eq!(event.kind, "minecraft:zombie");
+            assert_eq!(event.pos, [0.5, 64.0, 0.5]);
+            assert_eq!(event.reason, "NATURAL");
+            assert_eq!(event.spawner, Some([1, 64, 2]));
+            assert_eq!(event.difficulty, 2);
+            assert!(!event.spawn_cancelled);
+            event.difficulty = 3;
+            event.effective_difficulty = 4.5;
+            event.spawn_cancelled = true;
+            self.0.lock().unwrap().calls.push((
+                "first".into(),
+                event.difficulty,
+                event.effective_difficulty,
+                event.spawn_cancelled,
+            ));
+            Flow::Continue
+        }
+    }
+
+    struct Peek(Arc<Mutex<Seen>>);
+    impl Hooks for Peek {
+        fn finalize_spawn(&self, _host: &dyn Host, event: &mut FinalizeSpawnEvent<'_>) -> Flow {
+            self.0.lock().unwrap().calls.push((
+                "second".into(),
+                event.difficulty,
+                event.effective_difficulty,
+                event.spawn_cancelled,
+            ));
+            Flow::Cancel
+        }
+    }
+
+    struct Unreached;
+    impl Hooks for Unreached {
+        fn finalize_spawn(&self, _host: &dyn Host, _event: &mut FinalizeSpawnEvent<'_>) -> Flow {
+            panic!("a cancelled spawn is not offered to later mods");
+        }
+    }
+
+    let seen = Arc::new(Mutex::new(Seen::default()));
+    let mods: Vec<Box<dyn Hooks>> = vec![
+        Box::new(Raise(seen.clone())),
+        Box::new(Peek(seen.clone())),
+        Box::new(Unreached),
+    ];
+    let (mut difficulty, mut effective, mut cancelled, mut skip) = (2u8, 1.0f32, false, false);
+    dispatch_finalize_spawn(
+        &TestHost,
+        &mods,
+        "minecraft:overworld",
+        "minecraft:zombie",
+        [0.5, 64.0, 0.5],
+        "NATURAL",
+        Some([1, 64, 2]),
+        &mut difficulty,
+        &mut effective,
+        &mut cancelled,
+        &mut skip,
+    );
+    assert_eq!(
+        (difficulty, effective, cancelled, skip),
+        (3, 4.5, true, true)
+    );
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.calls.len(), 2);
+    assert_eq!(seen.calls[0].0.as_str(), "first");
+    assert_eq!(seen.calls[1], ("second".to_string(), 3, 4.5, true));
+}

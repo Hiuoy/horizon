@@ -1,0 +1,18 @@
+{
+  "hooks": [
+    {
+      "name": "finalize_spawn",
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_finalize_spawn",
+      "neoforge": "FinalizeSpawnEvent",
+      "side": "server",
+      "cancellable": true,
+      "mod_api": {
+        "contract": "cancel",
+        "out": "skip"
+      }
+    }
+  ],
+  "rust_summary": "a mob about to finish spawning, on the server just before `Mob.finalizeSpawn` (`native_finalize_spawn`).",
+  "doc_summary": "`native_finalize_spawn(dimension, kind, pos, reason, spawner, difficulty, effective_difficulty, spawn_cancelled, skip)`: a mob about to finish spawning, just before vanilla's `Mob.finalizeSpawn` and only where vanilla 26.3 calls it; change the local difficulty (base 0 peaceful to 3 hard, and its effective value), set `spawn_cancelled` to keep the mob out, or cancel (the out `skip`) to skip the finalize and let the mob spawn. There is no entity id (the mob is usually not in the level yet; change its gear in `mob_spawned`); mobs placed during chunk generation and natural spawning are not covered yet. Bundles need \"hooks\": @API:finalize_spawn@.",
+  "comments": ["crates/horizon-client/src/game/finalize_spawn.rs"]
+}

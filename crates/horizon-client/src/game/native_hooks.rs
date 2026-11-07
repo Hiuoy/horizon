@@ -8646,6 +8646,49 @@ impl Game<'_> {
     pub(super) fn native_player_died(&mut self, player: u128, cause: Option<&str>) {
         mod_api::dispatch_player_died(self, mod_api::mods(), player, cause);
     }
+    /// A mob is about to finish spawning (NeoForge's `FinalizeSpawnEvent`):
+    /// vanilla's `Mob.finalizeSpawn`, on the server and only where vanilla
+    /// 26.3 calls it. `kind` is the mob's type and `pos` where it will stand,
+    /// `reason` vanilla's `EntitySpawnReason` name (`NATURAL`, `SPAWNER`...),
+    /// and `spawner` the spawner block for `SPAWNER` and `TRIAL_SPAWNER` (and
+    /// the creaking heart's `SPAWNER` spawn). `difficulty` is
+    /// `LocalDifficulty.base` (0 peaceful to 3 hard) and
+    /// `effective_difficulty` its effective value: the finalize uses what
+    /// they are left as. Set `spawn_cancelled` to keep the mob out of the
+    /// level (the finalize still runs unless `skip` is set too); cancel (the
+    /// out `skip`) to skip the finalize and let the mob spawn, without the
+    /// steps vanilla's `finalizeSpawn` runs (its variant, gear, riders...).
+    /// There is no entity id: at most sites the mob is not in the level yet;
+    /// a mod that changes its gear does that in `mob_spawned`. Not told of
+    /// mobs placed during chunk generation (the worldgen threads,
+    /// `vanillagen/structure_mobs.rs`) or of natural spawning yet (natural
+    /// joins after PR #11574). Server-side. API @API:finalize_spawn@.
+    pub(super) fn native_finalize_spawn(
+        &self,
+        dimension: &str,
+        kind: &str,
+        pos: [f64; 3],
+        reason: &str,
+        spawner: Option<[i32; 3]>,
+        difficulty: &mut u8,
+        effective_difficulty: &mut f32,
+        spawn_cancelled: &mut bool,
+        skip: &mut bool,
+    ) {
+        mod_api::dispatch_finalize_spawn(
+            self,
+            mod_api::mods(),
+            dimension,
+            kind,
+            pos,
+            reason,
+            spawner,
+            difficulty,
+            effective_difficulty,
+            spawn_cancelled,
+            skip,
+        );
+    }
     /// A new mob of `kind` joined `dimension` at `pos`: `natural` when the
     /// world's spawning made it, false when something else did (a breed, a
     /// raid, a spawner, a conversion, `/summon`, and the second mob of a

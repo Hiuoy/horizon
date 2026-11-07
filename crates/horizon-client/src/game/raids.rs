@@ -791,6 +791,20 @@ impl Game<'_> {
         leader: bool,
         reason: raider::Reason,
     ) -> Option<u32> {
+        let mut skip = false;
+        self.spawn_event_mob_tracked(kind, at, leader, reason, &mut skip)
+    }
+    /// [`spawn_event_mob`](Self::spawn_event_mob) that also reports whether a
+    /// mod skipped vanilla's `finalizeSpawn`: the siege runs the jockeys
+    /// itself and needs to know.
+    fn spawn_event_mob_tracked(
+        &mut self,
+        kind: &str,
+        at: [f64; 3],
+        leader: bool,
+        reason: raider::Reason,
+        skip: &mut bool,
+    ) -> Option<u32> {
         let t = self.res.mob_types().get(kind).cloned()?;
         self.next_entity += 1;
         let mut mob = Mob::new(self.next_entity, t, Vec3::new(at[0], at[1], at[2]), 0.0);
@@ -811,6 +825,7 @@ impl Game<'_> {
         if event.cancelled {
             return None;
         }
+        *skip = event.skip;
         if !event.skip {
             let facts = self.biome_facts(
                 at[0].floor() as i32,
@@ -1414,8 +1429,14 @@ impl Game<'_> {
         let Some(at) = self.find_siege_spawn_pos(&centers, spot) else {
             return;
         };
-        let Some(id) = self.spawn_event_mob("minecraft:zombie", at, false, raider::Reason::Event)
-        else {
+        let mut skip = false;
+        let Some(id) = self.spawn_event_mob_tracked(
+            "minecraft:zombie",
+            at,
+            false,
+            raider::Reason::Event,
+            &mut skip,
+        ) else {
             return;
         };
         let yaw = self.world.random.next_float() * 360.0;
@@ -1423,11 +1444,13 @@ impl Game<'_> {
             (m.yaw, m.previous_yaw, m.body_yaw, m.previous_body_yaw) = (yaw, yaw, yaw, yaw);
             (m.head_yaw, m.previous_head_yaw) = (yaw, yaw);
         }
-        self.spawn_jockeys_reason(
-            id,
-            false,
-            Some(horizon_client::mobs::finalize::Reason::Event),
-        );
+        if !skip {
+            self.spawn_jockeys_reason(
+                id,
+                false,
+                Some(horizon_client::mobs::finalize::Reason::Event),
+            );
+        }
     }
     /// `VillageSiege.findRandomSpawnPos`: ten tries within 8 blocks of the
     /// spot for a village column where a zombie may spawn.

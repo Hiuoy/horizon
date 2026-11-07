@@ -136,6 +136,8 @@ mod extras;
 mod falling_damage;
 mod fangs;
 mod finalize_spawn;
+#[cfg(test)]
+mod finalize_spawn_tests;
 mod fireworks;
 mod fishing;
 mod fov;
