@@ -9127,6 +9127,38 @@ impl Game<'_> {
     ) {
         mod_api::dispatch_mob_effect_added(self, mod_api::mods(), effect, entity, amplifier);
     }
+    /// NeoForge's `MobEffectEvent.Applicable`: `LivingEntity.canBeAffected`
+    /// is about to decide whether `entity` (its `Entity.getId`) of type `kind`
+    /// may take the effect `effect` for `duration` ticks at `amplifier`.
+    /// `result` starts as the entity's own answer (`None`, `DEFAULT`); set it
+    /// to `Some(true)` to force the effect on (`APPLY`) or `Some(false)` to
+    /// keep it off (`DO_NOT_APPLY`), and the first mod that answers decides.
+    /// Asked where `LivingEntity.canBeAffected` is asked: at an area effect
+    /// cloud's dose for each new victim, and once per add before the effect is
+    /// stored. An `APPLY` still meets checks that are not `canBeAffected` (the
+    /// wither's own `addEffect` refuses every effect). Players, mobs and the
+    /// area effect clouds of the ender dragon and of lingering potions. It
+    /// runs on the thread that ticks the world (the server thread): state
+    /// shared with render thread hooks needs synchronising. No `self`: the
+    /// game is applying the effect. API @API:mob_effect_applicable@.
+    pub(super) fn native_mob_effect_applicable(
+        entity: i32,
+        kind: &str,
+        effect: &str,
+        amplifier: i32,
+        duration: i32,
+        result: &mut Option<bool>,
+    ) {
+        mod_api::dispatch_mob_effect_applicable(
+            mod_api::mods(),
+            entity,
+            kind,
+            effect,
+            amplifier,
+            duration,
+            result,
+        );
+    }
     /// `LivingEntity.hurtServer`, past its guards (invulnerable, dead, fire
     /// with fire resistance), is about to hurt entity `entity` of type `kind`
     /// (`minecraft:zombie`, `minecraft:player`) by `amount` of `damage_type`

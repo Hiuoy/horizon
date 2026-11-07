@@ -846,6 +846,14 @@ entity that didn't have it, and `native_mob_effect_added` (NeoForge's `MobEffect
 A mob is its `Entity.getId`; a player is None, with their state swapped in (`native_acting_player`). Vanilla's effects
 never reach them. Bundles that use them need `"hooks": 56`.
 
+`native_mob_effect_applicable(entity, kind, effect, amplifier, duration, result)` is NeoForge's
+`MobEffectEvent.Applicable`: it asks whether an entity may take a status effect where `LivingEntity.canBeAffected`
+would be, with the entity's id and type, the effect, its amplifier and its duration. `None` keeps the entity's own
+answer, `Some(true)` forces the effect on (`APPLY`) and `Some(false)` keeps it off (`DO_NOT_APPLY`); the first mod
+that answers decides. Asked wherever `canBeAffected` would be, on the server: at a cloud's dose for each new victim
+and once per add. An `APPLY` still meets checks that are not `canBeAffected` (a wither's own `addEffect` refuses
+every effect). Bundles need `"hooks": @API:mob_effect_applicable@`.
+
 API 57 adds chunks and players coming and going, on the server: `native_chunk_load` (with whether the chunk is new), `native_chunk_unload`, and
 `native_player_logged_in` and `native_player_logged_out`, which come in pairs however a player leaves, the server stopping included. Bundles that use them need `"hooks": 57`.
 

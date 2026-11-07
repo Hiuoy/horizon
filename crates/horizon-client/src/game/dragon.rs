@@ -429,6 +429,8 @@ pub(super) enum FightWho {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FightPlayer {
     pub(super) who: FightWho,
+    /// Its `Entity.getId`: `LivingEntity.canBeAffected`'s entity.
+    pub(super) entity: i32,
     pub(super) position: Vec3,
     pub(super) bounds: Aabb,
     pub(super) alive: bool,
@@ -1132,6 +1134,7 @@ impl Game<'_> {
         if let Some(p) = self.player.as_ref() {
             out.push(FightPlayer {
                 who: FightWho::Host,
+                entity: p.entity_id,
                 position: p.position,
                 bounds: p.bounds(),
                 alive: !p.health.dead_or_dying(),
@@ -1144,6 +1147,7 @@ impl Game<'_> {
                 let [x, y, z] = g.position;
                 out.push(FightPlayer {
                     who: FightWho::Guest(g.conn),
+                    entity: g.entity_id,
                     position: Vec3::new(x, y, z),
                     bounds: super::lan_mobs::guest_bounds(g),
                     alive: !g.dead,
@@ -2999,14 +3003,22 @@ impl Game<'_> {
         // instant damage can affect (`canBeAffected`) too; only while a
         // breath cloud is there (lingering potions' clouds tick elsewhere).
         let no_breath = self.breath_clouds.iter().all(|c| c.potion.is_some());
-        let mobs: Vec<(u32, Aabb, Vec3)> = if no_breath {
+        let mobs: Vec<(u32, Aabb, Vec3, String, bool)> = if no_breath {
             Vec::new()
         } else {
             let tags = &self.stations().enchantments.entity_tags;
             self.mobs
                 .iter()
-                .filter(|m| m.alive() && mob_can_be_affected(tags, &m.kind.id, "instant_damage"))
-                .map(|m| (m.id, m.bounds(), m.position))
+                .filter(|m| m.alive())
+                .map(|m| {
+                    (
+                        m.id,
+                        m.bounds(),
+                        m.position,
+                        m.kind.id.clone(),
+                        mob_can_be_affected(tags, &m.kind.id, "instant_damage"),
+                    )
+                })
                 .collect()
         };
         let mut harmed: Vec<(FightWho, f32)> = Vec::new();
@@ -3054,15 +3066,55 @@ impl Game<'_> {
             // Instant damage I from the flame cloud, II from a fireball's,
             // both at the cloud's 0.5 scale.
             let amount = harm_amount(u32::from(!c.from_dragon));
-            let inside = players
+            let inside: Vec<Victim> = players
                 .iter()
                 .filter(|p| cloud_hits(c.at, r, p.bounds, p.position))
+                .filter(|p| {
+                    // Only a new victim at a dose is asked.
+                    if c.age < BREATH_WAIT
+                        || c.age % 5 != 0
+                        || c.victims
+                            .iter()
+                            .any(|&(v, until)| v == Victim::Player(p.who) && c.age < until)
+                    {
+                        return true;
+                    }
+                    horizon_client::mobs::applicable(
+                        p.entity,
+                        "minecraft:player",
+                        "minecraft:instant_damage",
+                        i32::from(!c.from_dragon),
+                        1,
+                        true,
+                    )
+                })
                 .map(|p| Victim::Player(p.who))
                 .chain(
                     mobs.iter()
                         .filter(|m| cloud_hits(c.at, r, m.1, m.2))
+                        .filter(|m| {
+                            // `AreaEffectCloud.serverTick` asks `canBeAffected`
+                            // only for a new victim, at its 5-tick dose.
+                            if c.age < BREATH_WAIT
+                                || c.age % 5 != 0
+                                || c.victims
+                                    .iter()
+                                    .any(|&(v, until)| v == Victim::Mob(m.0) && c.age < until)
+                            {
+                                return true;
+                            }
+                            horizon_client::mobs::applicable(
+                                m.0 as i32,
+                                &m.3,
+                                "minecraft:instant_damage",
+                                i32::from(!c.from_dragon),
+                                1,
+                                m.4,
+                            )
+                        })
                         .map(|m| Victim::Mob(m.0)),
-                );
+                )
+                .collect();
             for victim in breath_victims(c.age, &mut c.victims, inside) {
                 match victim {
                     Victim::Player(who) => harmed.push((who, amount)),
@@ -5558,6 +5610,7 @@ mod tests {
         let position = Vec3::new(x, 64.0, 0.0);
         FightPlayer {
             who,
+            entity: 0,
             position,
             bounds: Aabb::new(position, Vec3::new(x + 0.6, 65.8, 0.6)),
             alive: true,

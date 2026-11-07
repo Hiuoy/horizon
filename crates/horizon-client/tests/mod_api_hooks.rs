@@ -673,3 +673,120 @@ fn a_screen_background_hook_can_cancel_vanilla_gradient() {
         "inventory cancels vanilla gradient for blur/custom draw"
     );
 }
+
+/// `MobEffectEvent.Applicable`: the mods are asked in order with the entity,
+/// its type, the effect, the amplifier and the duration; the first `Some`
+/// decides, `None` leaves the entity's own answer, and a result already set
+/// is kept without asking anyone.
+#[test]
+fn a_mob_effect_applicable_answer_chains_and_the_first_some_decides() {
+    use horizon_client::mod_api::{MobEffectApplicableEvent, dispatch_mob_effect_applicable};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct Log {
+        heard: Vec<(String, i32, String, String, i32, i32)>,
+    }
+
+    struct Recorder {
+        name: &'static str,
+        answer: Option<bool>,
+        log: Arc<Mutex<Log>>,
+    }
+    impl Hooks for Recorder {
+        fn mob_effect_applicable(&self, event: &mut MobEffectApplicableEvent<'_>) -> Option<bool> {
+            self.log.lock().unwrap().heard.push((
+                self.name.to_owned(),
+                event.entity,
+                event.kind.to_owned(),
+                event.effect.to_owned(),
+                event.amplifier,
+                event.duration,
+            ));
+            self.answer
+        }
+    }
+
+    let log = Arc::new(Mutex::new(Log::default()));
+    let mods: Vec<Box<dyn Hooks>> = vec![
+        Box::new(Recorder {
+            name: "default",
+            answer: None,
+            log: log.clone(),
+        }),
+        Box::new(Recorder {
+            name: "apply",
+            answer: Some(true),
+            log: log.clone(),
+        }),
+        Box::new(Recorder {
+            name: "never",
+            answer: Some(false),
+            log: log.clone(),
+        }),
+    ];
+    let mut result = None;
+    dispatch_mob_effect_applicable(
+        &mods,
+        17,
+        "minecraft:spider",
+        "minecraft:poison",
+        2,
+        200,
+        &mut result,
+    );
+    assert_eq!(result, Some(true), "the first Some wins");
+    let heard = log.lock().unwrap().heard.clone();
+    assert_eq!(heard.len(), 2, "the mod after the answer is not asked");
+    assert_eq!(heard[0].0, "default");
+    assert_eq!(heard[1].0, "apply");
+    assert_eq!(
+        heard[1],
+        (
+            "apply".to_owned(),
+            17,
+            "minecraft:spider".to_owned(),
+            "minecraft:poison".to_owned(),
+            2,
+            200
+        )
+    );
+
+    // DO_NOT_APPLY, DEFAULT, and an answer already set keeps later mods away.
+    let decide = |answers: [Option<bool>; 2], effect: &str| {
+        let mods: Vec<Box<dyn Hooks>> = answers
+            .into_iter()
+            .map(|answer| {
+                Box::new(Recorder {
+                    name: "m",
+                    answer,
+                    log: log.clone(),
+                }) as Box<dyn Hooks>
+            })
+            .collect();
+        let mut result = None;
+        dispatch_mob_effect_applicable(&mods, 17, "minecraft:pig", effect, 0, 100, &mut result);
+        result
+    };
+    assert_eq!(decide([None, Some(false)], "minecraft:poison"), Some(false));
+    assert_eq!(decide([None, Some(true)], "minecraft:speed"), Some(true));
+    assert_eq!(decide([None, None], "minecraft:regeneration"), None);
+
+    let before = log.lock().unwrap().heard.len();
+    let mut result = Some(false);
+    dispatch_mob_effect_applicable(
+        &mods,
+        17,
+        "minecraft:pig",
+        "minecraft:speed",
+        0,
+        100,
+        &mut result,
+    );
+    assert_eq!(result, Some(false), "an earlier answer stands");
+    assert_eq!(
+        log.lock().unwrap().heard.len(),
+        before,
+        "no mod is asked once a result is set"
+    );
+}

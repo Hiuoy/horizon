@@ -667,7 +667,10 @@ impl Game<'_> {
                 .zip(pos)
                 .map(|(a, b)| (a - i64::from(b)).pow(2))
                 .sum::<i64>();
-            if d >= range * range || !(in_water || g.in_rain(at, top)) {
+            if d >= range * range
+                || !(in_water || g.in_rain(at, top))
+                || !g.player_effect_applicable("minecraft:conduit_power", 0, 260)
+            {
                 return;
             }
             let power = EffectInstance {

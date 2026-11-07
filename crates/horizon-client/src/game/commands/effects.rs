@@ -75,8 +75,8 @@ impl Game<'_> {
                         let name = namespaced(effect.id);
                         let new = !m.has_effect(name);
                         // `new MobEffectInstance(effect, duration, amplifier, false, particles)`.
-                        let changed =
-                            m.add_effect_with(name, duration, amplifier, false, particles);
+                        let added = m.add_effect_with(name, duration, amplifier, false, particles);
+                        let changed = added.changed;
                         // MobEffect.onEffectAdded: an omen's sound, at the mob's feet.
                         if new
                             && changed
@@ -85,7 +85,9 @@ impl Game<'_> {
                             let at = [m.position.x, m.position.y, m.position.z];
                             self.audio.play(sound, Some(at), 1.0, 1.0);
                         }
-                        self.mod_effect_added(name, Some(id as i32), amplifier, new);
+                        if added.accepted {
+                            self.mod_effect_added(name, Some(id as i32), amplifier, new);
+                        }
                         changed
                     }
                     None => false,

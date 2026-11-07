@@ -1437,6 +1437,9 @@ impl Game<'_> {
         {
             return;
         }
+        if !self.player_effect_applicable("minecraft:darkness", 0, warden::DARKNESS_DURATION) {
+            return;
+        }
         let mut effect =
             horizon_client::effects::EffectInstance::new("darkness", warden::DARKNESS_DURATION, 0);
         effect.visible = false;

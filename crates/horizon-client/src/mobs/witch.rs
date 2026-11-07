@@ -278,13 +278,15 @@ fn drink(m: &mut Mob, cx_events: &mut Vec<MobEvent>, target_far: bool) {
             if let Some(potion) = m.extra.take_main_hand() {
                 match potion.as_ref() {
                     "minecraft:water_breathing" => {
-                        m.add_effect("minecraft:water_breathing", 3600, 0)
+                        m.add_effect("minecraft:water_breathing", 3600, 0);
                     }
                     "minecraft:fire_resistance" => {
-                        m.add_effect("minecraft:fire_resistance", 3600, 0)
+                        m.add_effect("minecraft:fire_resistance", 3600, 0);
                     }
                     "minecraft:healing" => m.heal(4.0),
-                    "minecraft:swiftness" => m.add_effect("minecraft:speed", 3600, 0),
+                    "minecraft:swiftness" => {
+                        m.add_effect("minecraft:speed", 3600, 0);
+                    }
                     _ => {}
                 }
             }

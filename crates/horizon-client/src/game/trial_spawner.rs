@@ -297,7 +297,10 @@ impl Game<'_> {
     fn bad_omen_to_trial_omen(&mut self, uuid: Uuid) {
         // MobEffect.onEffectAdded plays at the player's feet.
         let feet = if self.acting_uuid() == uuid {
-            let added = transform_bad_omen(&mut self.potions.effects);
+            let added = transform_bad_omen(
+                &mut self.potions.effects,
+                self.player.as_ref().map(|p| p.entity_id),
+            );
             self.player
                 .as_ref()
                 .filter(|_| added)
@@ -313,7 +316,7 @@ impl Game<'_> {
                 return;
             };
             let at = guest.position;
-            transform_bad_omen(&mut guest.effects).then_some(at)
+            transform_bad_omen(&mut guest.effects, Some(guest.entity_id)).then_some(at)
         };
         if let Some(at) = feet {
             self.audio
@@ -330,15 +333,35 @@ impl Game<'_> {
 }
 
 /// Swap Bad Omen for Trial Omen on `effects`; true when Trial Omen is new.
-fn transform_bad_omen(effects: &mut horizon_client::effects::PlayerEffects) -> bool {
+/// `entity` is the player's id (none when unknown): `player.addEffect` asks
+/// `canBeAffected` and a mod's `MobEffectEvent.Applicable` may keep Trial Omen
+/// off, but Bad Omen goes either way, as vanilla removes it first.
+fn transform_bad_omen(
+    effects: &mut horizon_client::effects::PlayerEffects,
+    entity: Option<i32>,
+) -> bool {
     let Some(amplifier) = effects.amplifier("bad_omen") else {
         return false;
     };
+    let duration = TRIAL_OMEN_TICKS_PER_LEVEL * (amplifier + 1);
+    let allowed = entity.is_none_or(|entity| {
+        horizon_client::mobs::applicable(
+            entity,
+            "minecraft:player",
+            "minecraft:trial_omen",
+            0,
+            duration,
+            true,
+        )
+    });
     effects.list.retain(|e| e.id != "bad_omen");
+    if !allowed {
+        return false;
+    }
     let new = effects.get("trial_omen").is_none();
     effects.add(horizon_client::effects::EffectInstance::new(
         "trial_omen",
-        TRIAL_OMEN_TICKS_PER_LEVEL * (amplifier + 1),
+        duration,
         0,
     ));
     new
@@ -359,13 +382,13 @@ mod omen_tests {
         assert_eq!(omen_of(&e), None);
         e.add(EffectInstance::new("bad_omen", 100, 1));
         assert_eq!(omen_of(&e), Some(Omen::Bad));
-        assert!(transform_bad_omen(&mut e));
+        assert!(transform_bad_omen(&mut e, None));
         assert!(e.get("bad_omen").is_none());
         assert_eq!(
             e.get("trial_omen").unwrap().duration,
             TRIAL_OMEN_TICKS_PER_LEVEL * 2
         );
         assert_eq!(omen_of(&e), Some(Omen::Trial));
-        assert!(!transform_bad_omen(&mut e));
+        assert!(!transform_bad_omen(&mut e, None));
     }
 }

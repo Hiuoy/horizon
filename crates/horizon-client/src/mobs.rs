@@ -116,7 +116,12 @@ use horizon_core::{
 };
 use horizon_world::block_collision::BlockCollisionRegistry;
 use serde_json::Value;
-use std::{collections::HashMap, fs, path::Path, sync::Arc};
+use std::{
+    collections::HashMap,
+    fs,
+    path::Path,
+    sync::{Arc, OnceLock},
+};
 
 #[derive(Clone, Debug)]
 pub struct Polygon {
@@ -3960,8 +3965,10 @@ impl Mob {
     /// `LivingEntity.addEffect` of a `MobEffectInstance` with its flags: the effect as
     /// `add_effect` has it, and `MobEffectInstance.update`'s rules for the flags of one already
     /// there: it takes the new ambient flag when the new one is not ambient or the effect
-    /// changed, and always the new visibility. Returns whether the active instance or its
-    /// flags changed (`MobEffectInstance.update` does not count a hidden-chain-only update).
+    /// changed, and always the new visibility. Whether it was accepted (`canBeAffected`,
+    /// with a mod's say), and whether the active instance or its flags changed
+    /// (`MobEffectInstance.update` does not count a hidden-chain-only update). A refused
+    /// effect leaves the flags alone, as vanilla refuses before it reads them.
     pub fn add_effect_with(
         &mut self,
         effect: &'static str,
@@ -3969,7 +3976,7 @@ impl Mob {
         amplifier: i32,
         ambient: bool,
         visible: bool,
-    ) -> bool {
+    ) -> EffectAdded {
         let effect = horizon_client_core::potions::namespaced(effect);
         let was_visible = !self.extra.hidden_effects.contains(&effect);
         let before = self
@@ -3978,7 +3985,13 @@ impl Mob {
             .iter()
             .find(|e| e.0 == effect)
             .map(|e| (e.1, e.2));
-        self.add_effect(effect, ticks, amplifier);
+        let accepted = self.add_effect(effect, ticks, amplifier);
+        if !accepted {
+            return EffectAdded {
+                accepted: false,
+                changed: false,
+            };
+        }
         let after = self
             .extra
             .effects
@@ -4001,10 +4014,13 @@ impl Mob {
         if !visible {
             self.extra.hidden_effects.push(effect);
         }
-        after.is_some()
-            && (before != after
-                || present_ambient != self.extra.ambient_effects.contains(&effect)
-                || was_visible != visible)
+        EffectAdded {
+            accepted,
+            changed: after.is_some()
+                && (before != after
+                    || present_ambient != self.extra.ambient_effects.contains(&effect)
+                    || was_visible != visible),
+        }
     }
     /// `LivingEntity.actuallyHurt`'s last step: what got past absorption goes to
     /// a native mod's `LivingDamageEvent.Pre`, which may change it, then comes
@@ -4194,13 +4210,27 @@ impl Mob {
         }
         !(self.kind.flags.undead && matches!(effect, "minecraft:poison" | "minecraft:regeneration"))
     }
-    pub fn add_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32) {
+    /// `LivingEntity.addEffect`: an effect the mob refuses is never added, so it
+    /// never joins the list the client draws or an effect tick reads. The mob's
+    /// `canBeAffected` answer goes to a native mod's `MobEffectEvent.Applicable`
+    /// first, which may force the effect on or keep it off; `WitherBoss.addEffect`
+    /// returns false for every effect without asking `canBeAffected`, so no mod's
+    /// answer beats it. Returns whether the effect was accepted.
+    pub fn add_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32) -> bool {
         let effect = horizon_client_core::potions::namespaced(effect);
-        // LivingEntity.addEffect: an effect the mob refuses is never added, so it
-        // never joins the list the client draws or an effect tick reads.
-        // WitherBoss.addEffect returns false for every effect.
-        if self.species() == Species::Wither || !self.can_be_affected(effect) {
-            return;
+        if self.species() == Species::Wither {
+            return false;
+        }
+        let default = self.can_be_affected(effect);
+        if !applicable(
+            self.id as i32,
+            self.kind.id.as_str(),
+            effect,
+            amplifier,
+            ticks,
+            default,
+        ) {
+            return false;
         }
         // AbsorptionMobEffect.onEffectStarted, which addEffect runs for every
         // effect it accepts, new, stronger or not: at least 4 hearts-halves per
@@ -4221,6 +4251,7 @@ impl Mob {
         } else {
             self.extra.effects.push((effect, ticks, amplifier));
         }
+        true
     }
     pub fn speed_bonus(&self) -> f64 {
         ai::speed_bonus(self)
@@ -4285,6 +4316,39 @@ impl Mob {
         let at = [self.position.x, self.position.y, self.position.z];
         events.push(MobEvent::Sound(event, at, ai::sound_volume(self), pitch));
     }
+}
+/// What a mob's [`Mob::add_effect_with`] did: whether `canBeAffected` (and a
+/// native mod's `MobEffectEvent.Applicable`) let the effect through, and
+/// whether the instance or its flags then changed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EffectAdded {
+    pub accepted: bool,
+    pub changed: bool,
+}
+/// The game's `MobEffectEvent.Applicable` hook (`native_mob_effect_applicable`),
+/// set once by the game: `LivingEntity.canBeAffected` before an effect is added,
+/// with the entity's id and type, the effect, its amplifier and its duration.
+/// `None` keeps the entity's own answer, `Some(true)` forces the effect on
+/// (`APPLY`), `Some(false)` keeps it off (`DO_NOT_APPLY`).
+pub static MOB_EFFECT_APPLICABLE: OnceLock<fn(i32, &str, &str, i32, i32, &mut Option<bool>)> =
+    OnceLock::new();
+/// Whether `entity` (of type `kind`) may take `effect`: the hook's answer, or
+/// `default` (the entity's own `canBeAffected`) when it is unset or answers
+/// `None`. Never asked twice for one add.
+pub fn applicable(
+    entity: i32,
+    kind: &str,
+    effect: &str,
+    amplifier: i32,
+    duration: i32,
+    default: bool,
+) -> bool {
+    let Some(hook) = MOB_EFFECT_APPLICABLE.get() else {
+        return default;
+    };
+    let mut result = None;
+    hook(entity, kind, effect, amplifier, duration, &mut result);
+    result.unwrap_or(default)
 }
 /// Model geometry for a mob, posed for its animation state, as camera-relative
 /// vertices textured from the shared atlas.
@@ -5296,24 +5360,24 @@ mod magic_absorb_tests {
         let mut m = witch();
         let speed = "minecraft:speed";
         // A new effect takes its flags as they are.
-        assert!(m.add_effect_with("speed", 600, 0, true, false));
+        assert!(m.add_effect_with("speed", 600, 0, true, false).changed);
         assert!(
             m.extra.ambient_effects.contains(&speed) && m.extra.hidden_effects.contains(&speed)
         );
         // The same effect, no stronger and no longer, ambient again and visible: ambient stays
         // (nothing changed), the visibility follows.
-        assert!(m.add_effect_with("speed", 100, 0, true, true));
+        assert!(m.add_effect_with("speed", 100, 0, true, true).changed);
         assert_eq!(m.extra.effects, vec![(speed, 600, 0)]);
         assert!(
             m.extra.ambient_effects.contains(&speed) && !m.extra.hidden_effects.contains(&speed)
         );
         // Not ambient: it takes the flag off, though nothing else changed.
-        assert!(m.add_effect_with("speed", 100, 0, false, true));
+        assert!(m.add_effect_with("speed", 100, 0, false, true).changed);
         assert!(!m.extra.ambient_effects.contains(&speed));
         // Ambient over a not ambient one that does not change: not taken; one that changes: taken.
-        assert!(!m.add_effect_with("speed", 100, 0, true, true));
+        assert!(!m.add_effect_with("speed", 100, 0, true, true).changed);
         assert!(!m.extra.ambient_effects.contains(&speed));
-        assert!(m.add_effect_with("speed", 900, 0, true, true));
+        assert!(m.add_effect_with("speed", 900, 0, true, true).changed);
         assert!(m.extra.ambient_effects.contains(&speed));
         assert_eq!(m.extra.effects, vec![(speed, 900, 0)]);
     }
@@ -5391,6 +5455,79 @@ mod magic_absorb_tests {
         let thrown = Damage::indirect_magic(Some(Who::Player), [0.0, 1.0, 0.0]);
         assert!(m.damage_by(20.0, thrown, "minecraft:splash_potion"));
         assert_eq!(m.health, 7.0);
+    }
+}
+
+#[cfg(test)]
+mod effect_applicable_tests {
+    use super::*;
+    use horizon_core::geometry::Vec3;
+
+    fn mob(name: &str, species: Species, id: u32) -> Mob {
+        let mut kind = sensor_scan_tests::kind();
+        let def = Arc::make_mut(&mut kind);
+        def.id = name.into();
+        def.species = species;
+        Mob::new(id, kind, Vec3::ZERO, 0.0)
+    }
+
+    /// The hook of these tests (global: it stays set for the process), for
+    /// entities 9302 and 9402 only: speed is kept off (`DO_NOT_APPLY`) and
+    /// poison is forced on (`APPLY`), and every other entity and effect keeps
+    /// the mob's own answer.
+    fn hook(
+        entity: i32,
+        kind: &str,
+        effect: &str,
+        amplifier: i32,
+        duration: i32,
+        result: &mut Option<bool>,
+    ) {
+        match (entity, kind, effect) {
+            (9302, "minecraft:pig", "minecraft:speed") => {
+                assert_eq!((amplifier, duration), (0, 200));
+                *result = Some(false);
+            }
+            (9402, "minecraft:spider", "minecraft:poison") => {
+                assert_eq!((amplifier, duration), (0, 200));
+                *result = Some(true);
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn a_mod_decides_whether_a_mob_takes_an_effect() {
+        // Unset: the mob's own `canBeAffected`.
+        let mut pig = mob("minecraft:pig", Species::Pig, 9301);
+        assert!(pig.add_effect("minecraft:speed", 200, 0));
+        assert!(pig.has_effect("minecraft:speed"));
+        let mut spider = mob("minecraft:spider", Species::Spider, 9401);
+        assert!(!spider.add_effect("minecraft:poison", 200, 0));
+        assert!(!spider.has_effect("minecraft:poison"));
+
+        let installed = *MOB_EFFECT_APPLICABLE.get_or_init(|| hook);
+        assert!(std::ptr::fn_addr_eq(
+            installed,
+            hook as fn(i32, &str, &str, i32, i32, &mut Option<bool>)
+        ));
+
+        // `DO_NOT_APPLY` keeps a pig from speed; `APPLY` gives a spider the
+        // poison it refuses itself. An effect the mod does not name still gets
+        // the mob's own answer.
+        let mut pig = mob("minecraft:pig", Species::Pig, 9302);
+        assert!(!pig.add_effect("minecraft:speed", 200, 0));
+        assert!(!pig.has_effect("minecraft:speed"));
+        assert!(pig.add_effect("minecraft:weakness", 200, 0));
+
+        let mut spider = mob("minecraft:spider", Species::Spider, 9402);
+        assert!(spider.add_effect("minecraft:poison", 200, 0));
+        assert!(spider.has_effect("minecraft:poison"));
+
+        // The mod only speaks for those two: a wither skeleton still refuses
+        // the wither effect itself.
+        let mut skeleton = mob("minecraft:wither_skeleton", Species::WitherSkeleton, 9403);
+        assert!(!skeleton.add_effect("minecraft:wither", 200, 0));
     }
 }
 

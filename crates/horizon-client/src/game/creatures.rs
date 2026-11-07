@@ -4116,6 +4116,15 @@ impl Game<'_> {
     /// `addEffect` and lands in every game mode.
     fn give_mob_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32, ambient: bool) {
         let immune = self.creative || self.spectator();
+        // `LivingEntity.addEffect` asks `canBeAffected` first: a player's own
+        // answer is true, and a mod's `MobEffectEvent.Applicable` may say no.
+        if !self.player_effect_applicable(
+            horizon_client::brewing::namespaced(effect),
+            amplifier,
+            ticks,
+        ) {
+            return;
+        }
         if let Some(instance) = mob_effect_instance(effect, ticks, amplifier, ambient, immune) {
             self.potions.effects.add(instance);
         }

@@ -1,0 +1,18 @@
+{
+  "hooks": [
+    {
+      "name": "mob_effect_applicable",
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_mob_effect_applicable",
+      "neoforge": "MobEffectEvent.Applicable",
+      "side": "server",
+      "cancellable": false,
+      "mod_api": {
+        "contract": "replace",
+        "out": "result"
+      }
+    }
+  ],
+  "rust_summary": "a check whether an entity may take a status effect (`native_mob_effect_applicable`).",
+  "doc_summary": "a check whether an entity may take a status effect, where `LivingEntity.canBeAffected` would be asked: `native_mob_effect_applicable(entity, kind, effect, amplifier, duration, result)` hears the entity's id and type, the effect, its amplifier and its duration before the effect is added. `None` keeps the entity's own answer (`DEFAULT`), `Some(true)` forces the effect on (`APPLY`), `Some(false)` keeps it off (`DO_NOT_APPLY`), and the first mod that answers decides. An `APPLY` still meets checks that are not `canBeAffected` (a wither's own `addEffect` refuses every effect). Server-side. Bundles need \"hooks\": @API:mob_effect_applicable@.",
+  "comments": ["docs/native-mods.md"]
+}

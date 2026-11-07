@@ -215,6 +215,27 @@ pub(super) fn mob_can_be_affected(
             || (effect != "regeneration" && effect != "poison")
     }
 }
+/// [`mob_can_be_affected`] with the native `MobEffectEvent.Applicable` hook:
+/// the mob's own answer is the default, and a mod may force `effect` on or
+/// keep it off. `effect` is the id a cloud or an arrow carries (unnamespaced
+/// for vanilla's).
+pub(super) fn mob_effect_applicable(
+    tags: &std::collections::HashMap<String, std::collections::HashSet<String>>,
+    mob: &horizon_client::mobs::Mob,
+    effect: &'static str,
+    duration: i32,
+    amplifier: i32,
+) -> bool {
+    let default = mob_can_be_affected(tags, &mob.kind.id, effect);
+    horizon_client::mobs::applicable(
+        mob.id as i32,
+        &mob.kind.id,
+        brewing::namespaced(effect),
+        amplifier,
+        duration,
+        default,
+    )
+}
 impl Game<'_> {
     /// The dragon's breath (`AreaEffectCloud` with instant damage at
     /// `amplifier`) on a mob: what a cloud puts on it, `indirectMagic(cloud,
@@ -878,7 +899,6 @@ impl Game<'_> {
                     .get("minecraft:inverted_healing_and_harm")
                     .is_some_and(|t| t.contains(&self.mobs[i].kind.id));
                 for (effect, duration, amp) in effects {
-                    let tags = &self.res.stations().enchantments.entity_tags;
                     // A mod's `onEffectAdded` may have changed the mobs.
                     let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
                         return;
@@ -894,12 +914,13 @@ impl Game<'_> {
                             }
                         }
                         _ => {
-                            if mob_can_be_affected(tags, &m.kind.id, effect)
-                                && let Some(name) = mob_effect_id(effect)
-                            {
+                            // `LivingEntity.addEffect` asks `canBeAffected`
+                            // (and a mod's `MobEffectEvent.Applicable`) itself.
+                            if let Some(name) = mob_effect_id(effect) {
                                 let new = !m.has_effect(name);
-                                m.add_effect(name, duration, amp);
-                                self.mod_effect_added(name, Some(id as i32), amp, new);
+                                if m.add_effect(name, duration, amp) {
+                                    self.mod_effect_added(name, Some(id as i32), amp, new);
+                                }
                             }
                         }
                     }
@@ -1051,6 +1072,7 @@ impl Game<'_> {
                 .as_ref()
                 .is_some_and(|s| &*s.item == "minecraft:turtle_helmet")
             && !self.eye_in_water(p.position.x, eye_y, p.position.z)
+            && self.player_effect_applicable("minecraft:water_breathing", 0, 200)
         {
             let mut effect = EffectInstance::new("water_breathing", 200, 0);
             effect.visible = false;
@@ -1065,10 +1087,39 @@ impl Game<'_> {
         client_tick_effects(&mut self.potions.effects, &mut self.sculk.darkness);
         self.apply_effect_status();
     }
-    /// Add an active effect to the player and update attributes / absorption.
+    /// `LivingEntity.canBeAffected` for the player this game acts for: a
+    /// player has no override, so the answer is true, but the native
+    /// `MobEffectEvent.Applicable` hook may refuse or force `effect`. No
+    /// player means no question and the default answer.
+    pub(super) fn player_effect_applicable(
+        &self,
+        effect: &str,
+        amplifier: i32,
+        duration: i32,
+    ) -> bool {
+        self.player.as_ref().is_none_or(|p| {
+            horizon_client::mobs::applicable(
+                p.entity_id,
+                "minecraft:player",
+                effect,
+                amplifier,
+                duration,
+                true,
+            )
+        })
+    }
+    /// Add an active effect to the player and update attributes / absorption:
+    /// `LivingEntity.addEffect` asks `canBeAffected` first; a player has no
+    /// override, so its own answer is true, and the native
+    /// `MobEffectEvent.Applicable` hook may refuse or force the effect. False
+    /// when it refuses: nothing is added, no sound plays and no absorption or
+    /// mod effect event follows.
     pub(super) fn add_player_effect(&mut self, effect: EffectInstance) -> bool {
         let id = effect.id;
         let amp = effect.amplifier;
+        if !self.player_effect_applicable(brewing::namespaced(id), amp, effect.duration) {
+            return false;
+        }
         let new = self.potions.effects.get(id).is_none();
         let changed = self.potions.effects.add(effect);
         self.apply_effect_status();
@@ -1542,21 +1593,42 @@ impl Game<'_> {
             Vec3::new(c.at[0] - r, c.at[1], c.at[2] - r),
             Vec3::new(c.at[0] + r, c.at[1] + 0.5, c.at[2] + r),
         );
+        let effects = potion.effects.clone();
         let mut inside = Vec::new();
         for p in players.iter().filter(|p| p.bounds.intersects(area)) {
+            // `AreaEffectCloud.serverTick` asks `canBeAffected` for a new
+            // player victim too, before its distance from the cloud.
+            if potion
+                .victims
+                .iter()
+                .any(|&(v, _)| v == Victim::Player(p.who))
+                || !effects.iter().any(|&(id, duration, amp)| {
+                    horizon_client::mobs::applicable(
+                        p.entity,
+                        "minecraft:player",
+                        brewing::namespaced(id),
+                        amp,
+                        duration,
+                        true,
+                    )
+                })
+            {
+                continue;
+            }
             inside.push((Victim::Player(p.who), p.position.x, p.position.z));
         }
-        let effects = potion.effects.clone();
         let tags = &self.stations().enchantments.entity_tags;
         // Only mobs that at least one of the cloud's effects can affect are
         // taken (`allEffects.stream().anyMatch(entity::canBeAffected)`), so
-        // the others neither become victims nor use up its radius.
+        // the others neither become victims nor use up its radius. A mob
+        // still under its reapplication delay is not asked again.
         for m in self.mobs.iter().filter(|m| {
             m.alive()
                 && m.bounds().intersects(area)
+                && !potion.victims.iter().any(|&(v, _)| v == Victim::Mob(m.id))
                 && effects
                     .iter()
-                    .any(|(id, ..)| mob_can_be_affected(tags, &m.kind.id, id))
+                    .any(|&(id, duration, amp)| mob_effect_applicable(tags, m, id, duration, amp))
         }) {
             inside.push((Victim::Mob(m.id), m.position.x, m.position.z));
         }
@@ -1682,7 +1754,6 @@ impl Game<'_> {
                     .get("minecraft:inverted_healing_and_harm")
                     .is_some_and(|t| t.contains(&self.mobs[i].kind.id));
                 for (id, duration, amp) in effects {
-                    let tags = &world_stations!(self).enchantments.entity_tags;
                     // A mod's `onEffectAdded` may have changed the mobs.
                     let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) else {
                         return;
@@ -1706,20 +1777,20 @@ impl Game<'_> {
                             }
                         }
                         _ => {
-                            // `LivingEntity.addEffect` refuses what the mob
-                            // cannot be affected by.
-                            if mob_can_be_affected(tags, &m.kind.id, id)
-                                && let Some(name) = mob_effect_id(id)
-                            {
+                            // `LivingEntity.addEffect` asks `canBeAffected`
+                            // (and a mod's `MobEffectEvent.Applicable`) itself.
+                            if let Some(name) = mob_effect_id(id) {
                                 let new = !m.has_effect(name);
-                                m.add_effect_with(
+                                let added = m.add_effect_with(
                                     name,
                                     scaled(*duration),
                                     *amp,
                                     ambient.contains(id),
                                     !hidden.contains(id),
                                 );
-                                self.mod_effect_added(name, Some(mob as i32), *amp, new);
+                                if added.accepted {
+                                    self.mod_effect_added(name, Some(mob as i32), *amp, new);
+                                }
                             }
                         }
                     }

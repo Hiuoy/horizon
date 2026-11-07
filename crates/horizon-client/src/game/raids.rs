@@ -659,7 +659,14 @@ impl Game<'_> {
             }
             // Raid.tick on a victory: each hero who is still alive.
             Action::Victory { heroes, amplifier } => self.for_each_player(|g| {
-                if heroes.contains(&g.acting_uuid()) && !g.spectator() {
+                if heroes.contains(&g.acting_uuid())
+                    && !g.spectator()
+                    && g.player_effect_applicable(
+                        "minecraft:hero_of_the_village",
+                        amplifier,
+                        raid::HERO_DURATION,
+                    )
+                {
                     let mut effect =
                         EffectInstance::new("hero_of_the_village", raid::HERO_DURATION, amplifier);
                     effect.visible = false;
@@ -1460,18 +1467,26 @@ impl Game<'_> {
         stack: &horizon_client::items::ItemStack,
     ) {
         let amplifier = stack.data().and_then(|d| d.ominous_amplifier).unwrap_or(0);
-        let mut effect =
-            horizon_client::effects::EffectInstance::new("bad_omen", 120_000, i32::from(amplifier));
-        effect.visible = false;
-        let new = self.potions.effects.get("bad_omen").is_none();
-        self.potions.effects.add(effect);
         let eye = self.eye_position().unwrap_or_default();
-        // MobEffect.onEffectAdded: Bad Omen's sound when it is new, at the
-        // player's feet.
-        if new && let Some(p) = self.player.as_ref() {
-            let at = [p.position.x, p.position.y, p.position.z];
-            self.audio
-                .play("minecraft:event.mob_effect.bad_omen", Some(at), 1.0, 1.0);
+        // `LivingEntity.addEffect` asks `canBeAffected`: a mod's
+        // `MobEffectEvent.Applicable` may keep the omen off; the bottle is
+        // used up either way.
+        if self.player_effect_applicable("minecraft:bad_omen", i32::from(amplifier), 120_000) {
+            let mut effect = horizon_client::effects::EffectInstance::new(
+                "bad_omen",
+                120_000,
+                i32::from(amplifier),
+            );
+            effect.visible = false;
+            let new = self.potions.effects.get("bad_omen").is_none();
+            self.potions.effects.add(effect);
+            // MobEffect.onEffectAdded: Bad Omen's sound when it is new, at the
+            // player's feet.
+            if new && let Some(p) = self.player.as_ref() {
+                let at = [p.position.x, p.position.y, p.position.z];
+                self.audio
+                    .play("minecraft:event.mob_effect.bad_omen", Some(at), 1.0, 1.0);
+            }
         }
         self.audio
             .play("minecraft:item.ominous_bottle.dispose", Some(eye), 1.0, 1.0);

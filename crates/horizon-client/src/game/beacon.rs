@@ -305,8 +305,16 @@ impl Game<'_> {
             ambient: true,
             ..EffectInstance::new(id, duration, amp)
         };
-        self.potions.effects.add(ambient(primary, amplifier));
-        if let Some(s) = secondary.filter(|&s| b.levels >= 4 && s != primary) {
+        if self.player_effect_applicable(
+            horizon_client::brewing::namespaced(primary),
+            amplifier,
+            duration,
+        ) {
+            self.potions.effects.add(ambient(primary, amplifier));
+        }
+        if let Some(s) = secondary.filter(|&s| b.levels >= 4 && s != primary)
+            && self.player_effect_applicable(horizon_client::brewing::namespaced(s), 0, duration)
+        {
             self.potions.effects.add(ambient(s, 0));
         }
     }
