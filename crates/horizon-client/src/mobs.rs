@@ -2005,10 +2005,13 @@ pub enum MobEvent {
     },
     /// Spawn a new mob (breeding, slime splitting, chicken eggs...).
     Spawn(Box<Mob>),
-    /// Spawn a mob by type id at a position (conversions, splits).
+    /// Spawn a mob by type id at a position (conversions, splits). `reason`
+    /// is the vanilla `EntitySpawnReason` the mods' `finalize_spawn` event is
+    /// told, or `None` where vanilla does not call `finalizeSpawn`.
     SpawnKind {
         kind: String,
         at: [f64; 3],
+        reason: Option<crate::mobs::finalize::Reason>,
         setup: SpawnSetup,
     },
     /// `Mob.convertTo` with `ConversionType.SINGLE` ([`conversion::single`]):

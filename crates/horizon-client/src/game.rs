@@ -135,6 +135,7 @@ mod explosion;
 mod extras;
 mod falling_damage;
 mod fangs;
+mod finalize_spawn;
 mod fireworks;
 mod fishing;
 mod fov;
@@ -14346,7 +14347,12 @@ impl Game<'_> {
                 *capture = keep;
             }
             if let Some(kind) = mob {
-                if let Some(id) = self.spawn_mob_at(kind, (target[0], target[1], target[2]), true) {
+                if let Some(id) = self.spawn_mob_at(
+                    kind,
+                    (target[0], target[1], target[2]),
+                    true,
+                    horizon_client::mobs::finalize::Reason::Bucket,
+                ) {
                     if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
                         horizon_client::entity_nbt::apply_item_components(m, stack);
                     }

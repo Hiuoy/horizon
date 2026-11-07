@@ -589,6 +589,7 @@ impl Game<'_> {
                     events.push(MobEvent::SpawnKind {
                         kind: "minecraft:zombified_piglin".into(),
                         at,
+                        reason: None,
                         setup: setup(m),
                     });
                     continue;
@@ -598,6 +599,7 @@ impl Game<'_> {
                     events.push(MobEvent::SpawnKind {
                         kind: "minecraft:witch".into(),
                         at,
+                        reason: Some(horizon_client::mobs::finalize::Reason::Conversion),
                         setup: setup(m),
                     });
                     continue;

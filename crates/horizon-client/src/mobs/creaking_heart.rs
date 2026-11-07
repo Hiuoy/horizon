@@ -66,6 +66,12 @@ pub trait HeartHost {
     fn add_mob(&mut self, m: Mob);
     /// `ServerLevel.isSpawningMonsters` (rules and difficulty).
     fn spawning_monsters(&self) -> bool;
+    /// The mods' say just before `Mob.finalizeSpawn` at `at`, the spawner
+    /// block being `spawner`: whether to skip the finalize and whether the
+    /// spawn is refused. `(false, false)` when there is no hook.
+    fn finalize_spawn(&mut self, _kind: &str, _at: [f64; 3], _spawner: [i32; 3]) -> (bool, bool) {
+        (false, false)
+    }
 }
 
 /// Block reads during a tick see the tick's own changes.
@@ -431,7 +437,14 @@ fn spawn_protector(
         m.previous_yaw = yaw;
         m.head_yaw = yaw;
         m.body_yaw = yaw;
-        finalize_spawn(&mut m, lr);
+        let at = [m.position.x, m.position.y, m.position.z];
+        let (skip, cancelled) = host.finalize_spawn(&kind.id, at, pos);
+        if cancelled {
+            return None;
+        }
+        if !skip {
+            finalize_spawn(&mut m, lr);
+        }
         // Mob.checkSpawnRules (always true for a creaking) and
         // checkSpawnObstruction (no liquid in the box).
         if liquid_in(w, m.bounds()) {

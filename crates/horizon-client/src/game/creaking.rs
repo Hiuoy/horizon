@@ -31,15 +31,17 @@ pub(super) fn heart_signal(world: &horizon_client::world::World, pos: BlockPos) 
 }
 
 /// The game's mobs as a heart sees them, taken out of the game for the tick.
-struct Host<'a> {
+struct Host<'a, 'g> {
     mobs: &'a mut Vec<Mob>,
     added: Vec<Mob>,
     uuids: &'a mut HashMap<u32, [i32; 4]>,
     creaking: Option<Arc<MobType>>,
     next_entity: &'a mut u32,
     spawning: bool,
+    /// The game, for the mods' spawn event before the creaking's finalizeSpawn.
+    game: &'a Game<'g>,
 }
-impl HeartHost for Host<'_> {
+impl HeartHost for Host<'_, '_> {
     fn mob(&self, id: u32) -> Option<&Mob> {
         self.mobs
             .iter()
@@ -80,6 +82,15 @@ impl HeartHost for Host<'_> {
     }
     fn spawning_monsters(&self) -> bool {
         self.spawning
+    }
+    fn finalize_spawn(&mut self, kind: &str, at: [f64; 3], spawner: [i32; 3]) -> (bool, bool) {
+        let event = self.game.finalize_spawn_event(
+            kind,
+            at,
+            Some(horizon_client::mobs::finalize::Reason::Spawner),
+            Some(spawner),
+        );
+        (event.skip, event.cancelled)
     }
 }
 
@@ -131,6 +142,7 @@ impl Game<'_> {
                 creaking,
                 next_entity: &mut next_entity,
                 spawning,
+                game: self,
             };
             f(heart, &w, &mut random, &mut host, &mut events);
             host.added

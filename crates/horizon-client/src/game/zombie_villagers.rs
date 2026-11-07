@@ -71,7 +71,12 @@ impl Game<'_> {
         self.mobs[v].removed = true;
         self.mobs[v].health = 0.0;
         let at = [old.position.x, old.position.y, old.position.z];
-        let Some(id) = self.spawn_mob("minecraft:zombie_villager", at, old.persistent) else {
+        let Some(id) = self.spawn_mob_with_reason(
+            "minecraft:zombie_villager",
+            at,
+            old.persistent,
+            horizon_client::mobs::finalize::Reason::Conversion,
+        ) else {
             return;
         };
         let ensure = self.mobs.iter().position(|m| m.id == victim);
@@ -137,7 +142,12 @@ impl Game<'_> {
         let old = self.mobs[i].clone();
         self.mobs[i].removed = true;
         let at = [old.position.x, old.position.y, old.position.z];
-        let Some(vid) = self.spawn_mob("minecraft:villager", at, old.persistent) else {
+        let Some(vid) = self.spawn_mob_with_reason(
+            "minecraft:villager",
+            at,
+            old.persistent,
+            horizon_client::mobs::finalize::Reason::Conversion,
+        ) else {
             return;
         };
         let Some(v) = self.mobs.iter_mut().find(|m| m.id == vid) else {

@@ -104,17 +104,33 @@ impl Game<'_> {
         };
         let id = self.next_entity + 1;
         let mut random = self.world.random.clone();
+        let game = &*self;
         let golem = villager::summon_golem(
             &self.mob_world_base(&[]),
             start,
             &mut random,
             |random, at, yaw| {
+                let event = game.finalize_spawn_event(
+                    "minecraft:iron_golem",
+                    [at.x, at.y, at.z],
+                    Some(horizon_client::mobs::finalize::Reason::MobSummoned),
+                    None,
+                );
+                // A mod that refuses the spawn keeps the golem out.
+                if event.cancelled {
+                    return None;
+                }
                 let mut m = Mob::new(id, kind.clone(), at, yaw);
-                villager::finalize_summoned_golem(&mut m, random);
-                m
+                if !event.skip {
+                    villager::finalize_summoned_golem(&mut m, random);
+                }
+                Some(m)
             },
         );
         self.world.random = random;
+        let Some(golem) = golem else {
+            return false;
+        };
         let Some(golem) = golem else {
             return false;
         };

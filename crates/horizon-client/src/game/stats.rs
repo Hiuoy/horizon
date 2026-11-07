@@ -445,7 +445,7 @@ impl Game<'_> {
         let difficulty_id = self.difficulty_id();
         let group = phantom_group_size(&mut self.world.random, difficulty_id);
         for _ in 0..group {
-            let _ = self.spawn_mob(
+            let _ = self.spawn_mob_with_reason(
                 "minecraft:phantom",
                 [
                     f64::from(at[0]) + 0.5,
@@ -453,6 +453,7 @@ impl Game<'_> {
                     f64::from(at[2]) + 0.5,
                 ],
                 false,
+                horizon_client::mobs::finalize::Reason::Natural,
             );
         }
     }

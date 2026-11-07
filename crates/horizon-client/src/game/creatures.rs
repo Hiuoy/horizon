@@ -24,6 +24,7 @@ use horizon_client::{
         Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
         ai::{eating_sound, feed_animal, takes_food},
         farm::Climate,
+        finalize::Reason as SpawnReason,
         spawning::{self, BiomeFacts},
     },
     mod_api::NativeLootDrops,
@@ -491,13 +492,34 @@ impl Game<'_> {
     }
     /// Create a mob of `kind` at a position, finalized like a natural spawn.
     pub(super) fn spawn_mob(&mut self, kind: &str, at: [f64; 3], persistent: bool) -> Option<u32> {
-        self.spawn_mob_for(kind, at, persistent, false)
+        self.spawn_mob_reason(kind, at, persistent, false, !persistent, None)
+    }
+    /// [`spawn_mob`](Self::spawn_mob) with the reason vanilla gives the spawn,
+    /// for the mods' `finalize_spawn` event.
+    pub(super) fn spawn_mob_with_reason(
+        &mut self,
+        kind: &str,
+        at: [f64; 3],
+        persistent: bool,
+        reason: SpawnReason,
+    ) -> Option<u32> {
+        self.spawn_mob_reason(kind, at, persistent, false, !persistent, Some(reason))
     }
     /// `SummonCommand` and `SpawnEggItem`: vanilla spawns the mob, but it
     /// never calls `Mob.setPersistenceRequired` for it, so the mob is not
     /// persistent: the despawn rule holds it like any other mob, and only
     /// its NBT can make it persistent.
     pub(super) fn spawn_mob_spawned(&mut self, kind: &str, at: [f64; 3]) -> Option<u32> {
+        self.spawn_mob_spawned_reason(kind, at, None)
+    }
+    /// [`spawn_mob_spawned`](Self::spawn_mob_spawned) with the reason vanilla
+    /// gives the spawn, for the mods' `finalize_spawn` event.
+    pub(super) fn spawn_mob_spawned_reason(
+        &mut self,
+        kind: &str,
+        at: [f64; 3],
+        reason: Option<SpawnReason>,
+    ) -> Option<u32> {
         // Ender Dragons have their own entity implementation rather than a
         // `Mob` entry.  Spawn eggs still go through `SpawnEggItem.spawnMob`,
         // so route this special entity through the same spawned-entity path.
@@ -506,7 +528,7 @@ impl Game<'_> {
         }
         // The spawn is not a natural one (no jockeys, the patrol leader roll
         // stays), but the mob is not persistent.
-        let id = self.spawn_mob_for(kind, at, true, false)?;
+        let id = self.spawn_mob_for_reason(kind, at, true, false, reason)?;
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
             m.persistent = false;
         }
@@ -521,11 +543,25 @@ impl Game<'_> {
         persistent: bool,
         scripted: bool,
     ) -> Option<u32> {
-        self.spawn_mob_reason(kind, at, persistent, scripted, !persistent)
+        self.spawn_mob_reason(kind, at, persistent, scripted, !persistent, None)
+    }
+    /// [`spawn_mob_for`](Self::spawn_mob_for) with the reason vanilla gives
+    /// the spawn, for the mods' `finalize_spawn` event.
+    pub(super) fn spawn_mob_for_reason(
+        &mut self,
+        kind: &str,
+        at: [f64; 3],
+        persistent: bool,
+        scripted: bool,
+        reason: Option<SpawnReason>,
+    ) -> Option<u32> {
+        self.spawn_mob_reason(kind, at, persistent, scripted, !persistent, reason)
     }
     /// `spawn_mob_for` with the spawn reason's NATURAL flag explicit: only a
     /// natural spawn rolls the jockey mounts of zombie horses, husks and
     /// drowned (`reinforcement` and spawner spawns pass `false`).
+    /// `reason` is the vanilla `EntitySpawnReason` the mods' `finalize_spawn`
+    /// event is told, or `None` where vanilla does not call `finalizeSpawn`.
     pub(super) fn spawn_mob_reason(
         &mut self,
         kind: &str,
@@ -533,6 +569,24 @@ impl Game<'_> {
         persistent: bool,
         scripted: bool,
         natural: bool,
+        reason: Option<SpawnReason>,
+    ) -> Option<u32> {
+        let mut skip = false;
+        self.spawn_mob_reason_tracked(kind, at, persistent, scripted, natural, reason, &mut skip)
+    }
+    /// [`spawn_mob_reason`](Self::spawn_mob_reason) that also reports whether
+    /// a mod skipped vanilla's `finalizeSpawn`: the spawner sites run the
+    /// tail of it themselves and need to know.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn spawn_mob_reason_tracked(
+        &mut self,
+        kind: &str,
+        at: [f64; 3],
+        persistent: bool,
+        scripted: bool,
+        natural: bool,
+        reason: Option<SpawnReason>,
+        skip: &mut bool,
     ) -> Option<u32> {
         let kind = if kind.contains(':') {
             kind.to_owned()
@@ -544,20 +598,26 @@ impl Game<'_> {
         let yaw = self.world.random.next_float() * 360.0;
         let mut mob = Mob::new(self.next_entity, t, Vec3::new(at[0], at[1], at[2]), yaw);
         mob.persistent = persistent;
-        let facts = self.biome_facts(
-            at[0].floor() as i32,
-            at[1].floor() as i32,
-            at[2].floor() as i32,
-        );
-        let difficulty = self.local_difficulty(at);
-        spawning::finalize(&mut mob, &facts, &difficulty);
-        if !scripted {
-            let reason = if persistent {
-                horizon_client::mobs::raider::Reason::Other
-            } else {
-                horizon_client::mobs::raider::Reason::Natural
-            };
-            horizon_client::mobs::raider::finalize(&mut mob, reason);
+        let event = self.finalize_spawn_event(&kind, at, reason, None);
+        if event.cancelled {
+            return None;
+        }
+        *skip = event.skip;
+        if !event.skip {
+            let facts = self.biome_facts(
+                at[0].floor() as i32,
+                at[1].floor() as i32,
+                at[2].floor() as i32,
+            );
+            spawning::finalize(&mut mob, &facts, &event.difficulty);
+            if !scripted {
+                let reason = if persistent {
+                    horizon_client::mobs::raider::Reason::Other
+                } else {
+                    horizon_client::mobs::raider::Reason::Natural
+                };
+                horizon_client::mobs::raider::finalize(&mut mob, reason);
+            }
         }
         let id = mob.id;
         self.mobs.push(mob);
@@ -565,10 +625,12 @@ impl Game<'_> {
         if !self.mobs.iter().any(|m| m.id == id) {
             return None;
         }
-        self.enchant_spawn_equipment(id);
-        self.halloween_spawn_head(id);
-        if !persistent && !scripted {
-            self.spawn_jockeys(id, natural);
+        if !event.skip {
+            self.enchant_spawn_equipment(id);
+            self.halloween_spawn_head(id);
+            if !persistent && !scripted {
+                self.spawn_jockeys_reason(id, natural, reason);
+            }
         }
         Some(id)
     }
@@ -712,22 +774,20 @@ impl Game<'_> {
             self.lan_entity_event(id as i32, event, at);
         }
     }
-    /// What a converted frog gets once its tadpole has grown up: the spawn
-    /// finalization of a conversion, then persistence.
+    /// `Tadpole.ageUp`: the frog is finalized for the conversion and made
+    /// persistent.
     fn finalize_converted(&mut self, id: u32) {
-        let Some(at) = self.mobs.iter().find(|m| m.id == id).map(|m| m.position) else {
+        let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
             return;
         };
-        let facts = self.biome_facts(
-            at.x.floor() as i32,
-            at.y.floor() as i32,
-            at.z.floor() as i32,
-        );
-        let difficulty = self.local_difficulty([at.x, at.y, at.z]);
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-            spawning::finalize(m, &facts, &difficulty);
-            m.persistent = true;
+        let mut m = self.mobs.remove(i);
+        // CONVERSION: a mod that refuses the spawn keeps the new mob out.
+        if !self.finalize_mob(&mut m, Some(SpawnReason::Conversion), None) {
+            return;
         }
+        // `Tadpole.ageUp` makes the frog persistent after `finalizeSpawn`.
+        m.persistent = true;
+        self.mobs.insert(i, m);
     }
     /// `Mob.convertTo(type, ConversionParams.single(...))` for a mob already
     /// removed: a new mob of `kind`, made without spawn finalization, takes
@@ -810,7 +870,7 @@ impl Game<'_> {
             None => self.default_summon_position()?,
         };
         let id = self
-            .spawn_mob_spawned(kind, at)
+            .spawn_mob_spawned_reason(kind, at, Some(SpawnReason::Command))
             .ok_or_else(|| format!("unknown or unsupported mob {kind}"))?;
         if baby && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
             m.extra.age = if m.species() == Species::Sniffer {
@@ -819,7 +879,7 @@ impl Game<'_> {
                 -24000
             };
         }
-        self.spawn_jockeys(id, false);
+        self.spawn_jockeys_reason(id, false, Some(SpawnReason::Command));
         Ok(id)
     }
     /// The `mobs` command: nearby mobs with position, health and running goals.
@@ -2831,8 +2891,19 @@ impl Game<'_> {
                     self.mobs.push(*m);
                     self.native_mobs_joined(self.mobs.len() - 1, false);
                 }
-                MobEvent::SpawnKind { kind, at, setup } => {
-                    if let Some(id) = self.spawn_mob(&kind, at, setup.persistent) {
+                MobEvent::SpawnKind {
+                    kind,
+                    at,
+                    reason,
+                    setup,
+                } => {
+                    let id = match reason {
+                        Some(reason) => {
+                            self.spawn_mob_with_reason(&kind, at, setup.persistent, reason)
+                        }
+                        None => self.spawn_mob(&kind, at, setup.persistent),
+                    };
+                    if let Some(id) = id {
                         self.apply_setup(id, &setup);
                     }
                 }
@@ -6247,6 +6318,7 @@ impl Game<'_> {
                 self.handle_mob_events(vec![MobEvent::SpawnKind {
                     kind: "minecraft:cow".into(),
                     at: pos,
+                    reason: None,
                     setup,
                 }])?;
                 self.damage_held_tool();
@@ -7136,7 +7208,8 @@ impl Game<'_> {
             f64::from(p[1]),
             f64::from(p[2]) + 0.5,
         ];
-        let Some(id) = self.spawn_mob_spawned(&kind, at) else {
+        let Some(id) = self.spawn_mob_spawned_reason(&kind, at, Some(SpawnReason::SpawnItemUse))
+        else {
             return Ok(false);
         };
         // SpawnEggItem.spawnMob: `EntityType.create` finalizes the mob, then
@@ -8179,7 +8252,12 @@ impl Game<'_> {
             f64::from(pos[2]) + 0.5,
         ];
         // setPortalCooldown: the new piglin does not travel at once.
-        if let Some(id) = self.spawn_mob("minecraft:zombified_piglin", at, false) {
+        if let Some(id) = self.spawn_mob_with_reason(
+            "minecraft:zombified_piglin",
+            at,
+            false,
+            SpawnReason::Structure,
+        ) {
             self.set_portal_cooldown(id);
         }
     }

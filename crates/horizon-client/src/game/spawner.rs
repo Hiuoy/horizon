@@ -22,8 +22,15 @@ type Pos = (i32, i32, i32);
 
 /// What a spawner tick decided to add, created once the level is free.
 pub(super) enum Planned {
-    /// `finalizeSpawn` ran on a fresh mob; the spawn data's `equipment`.
-    Finalized(Mob, Option<Tag>),
+    /// `finalizeSpawn` ran on a fresh mob (or a mod skipped it); the spawn
+    /// data's `equipment`, the spawn reason and whether the finalizeSpawn
+    /// tail still runs.
+    Finalized {
+        mob: Mob,
+        equipment: Option<Tag>,
+        reason: horizon_client::mobs::finalize::Reason,
+        skip: bool,
+    },
     /// A mob loaded from the spawn data (with its passengers) and its
     /// `equipment`.
     Loaded(Tag, Option<Tag>),
@@ -125,7 +132,7 @@ impl Game<'_> {
         {
             let level = self.natural_level();
             let mut spawn = |l: &super::natural_spawning::GameLevel, r: &SpawnerSpawn| {
-                l.game.plan_spawner_mob(l, r, &mut planned)
+                l.game.plan_spawner_mob(l, r, pos, &mut planned)
             };
             spawner.server_tick(&level, &mut random, pos, &mut spawn, &mut events);
         }
@@ -140,15 +147,22 @@ impl Game<'_> {
         for (i, plan) in planned.into_iter().enumerate() {
             let provisional = u32::MAX - i as u32;
             let id = match plan {
-                Planned::Finalized(mut mob, equipment) => {
+                Planned::Finalized {
+                    mut mob,
+                    equipment,
+                    reason,
+                    skip,
+                } => {
                     self.next_entity += 1;
                     mob.id = self.next_entity;
                     let id = mob.id;
                     self.mobs.push(mob);
                     self.native_mobs_joined(self.mobs.len() - 1, false);
-                    self.enchant_spawn_equipment(id);
-                    self.halloween_spawn_head(id);
-                    self.spawn_jockeys(id, false);
+                    if !skip {
+                        self.enchant_spawn_equipment(id);
+                        self.halloween_spawn_head(id);
+                        self.spawn_jockeys_reason(id, false, Some(reason));
+                    }
                     Some((id, equipment))
                 }
                 Planned::Loaded(tag, equipment) => {
@@ -171,6 +185,7 @@ impl Game<'_> {
         &self,
         l: &super::natural_spawning::GameLevel,
         r: &SpawnerSpawn,
+        spawner: [i32; 3],
         planned: &mut Vec<Planned>,
     ) -> Option<SpawnerAdded> {
         let kind = self.res.mob_types().get(r.id)?.clone();
@@ -178,26 +193,43 @@ impl Game<'_> {
         let at = Vec3::new(x, y, z);
         let bounds = if r.finalize {
             let mut mob = Mob::new(0, kind, at, r.yaw);
-            let facts = self.biome_facts(x.floor() as i32, y.floor() as i32, z.floor() as i32);
-            let difficulty = self.local_difficulty(r.position);
-            spawning::finalize(&mut mob, &facts, &difficulty);
+            let reason = if r.trial {
+                horizon_client::mobs::finalize::Reason::TrialSpawner
+            } else {
+                horizon_client::mobs::finalize::Reason::Spawner
+            };
+            let event = self.finalize_spawn_event(r.id, r.position, Some(reason), Some(spawner));
+            if event.cancelled {
+                return None;
+            }
+            if !event.skip {
+                let facts = self.biome_facts(x.floor() as i32, y.floor() as i32, z.floor() as i32);
+                spawning::finalize(&mut mob, &facts, &event.difficulty);
+            }
             // TrialSpawner.spawnMob: setPersistenceRequired.
             mob.persistent = r.trial;
-            horizon_client::mobs::raider::finalize(
-                &mut mob,
-                horizon_client::mobs::raider::Reason::Other,
-            );
-            // Shulker.finalizeSpawn faces it south.
-            if mob.species() == horizon_client::mobs::Species::Shulker {
-                mob.yaw = 0.0;
-                mob.previous_yaw = 0.0;
-                mob.body_yaw = 0.0;
-                mob.previous_body_yaw = 0.0;
-                mob.head_yaw = 0.0;
-                mob.previous_head_yaw = 0.0;
+            if !event.skip {
+                horizon_client::mobs::raider::finalize(
+                    &mut mob,
+                    horizon_client::mobs::raider::Reason::Other,
+                );
+                // Shulker.finalizeSpawn faces it south.
+                if mob.species() == horizon_client::mobs::Species::Shulker {
+                    mob.yaw = 0.0;
+                    mob.previous_yaw = 0.0;
+                    mob.body_yaw = 0.0;
+                    mob.previous_body_yaw = 0.0;
+                    mob.head_yaw = 0.0;
+                    mob.previous_head_yaw = 0.0;
+                }
             }
             let bounds = mob.bounds();
-            planned.push(Planned::Finalized(mob, r.equipment.cloned()));
+            planned.push(Planned::Finalized {
+                mob,
+                equipment: r.equipment.cloned(),
+                reason,
+                skip: event.skip,
+            });
             bounds
         } else {
             // A UUID already in the level is refused.

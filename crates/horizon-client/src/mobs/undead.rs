@@ -1302,7 +1302,9 @@ mod conversion_tests {
                 crate::mobs::conversion::single(from, &mut m, *params);
                 Some(m)
             }
-            MobEvent::SpawnKind { kind, at, setup } => {
+            MobEvent::SpawnKind {
+                kind, at, setup, ..
+            } => {
                 let mut m = new(kind, Vec3::new(at[0], at[1], at[2]), setup.yaw);
                 m.persistent = setup.persistent;
                 if setup.baby {

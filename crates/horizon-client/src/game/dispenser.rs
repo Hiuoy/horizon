@@ -822,7 +822,13 @@ impl Game<'_> {
         1.0 + amount
     }
     /// `EntityType.spawn(.., pos, reason, tryMoveDown, false)` for a mob.
-    pub(super) fn spawn_mob_at(&mut self, kind: &str, p: Pos, try_move_down: bool) -> Option<u32> {
+    pub(super) fn spawn_mob_at(
+        &mut self,
+        kind: &str,
+        p: Pos,
+        try_move_down: bool,
+        reason: horizon_client::mobs::finalize::Reason,
+    ) -> Option<u32> {
         let name = if kind.contains(':') {
             kind.to_owned()
         } else {
@@ -856,10 +862,14 @@ impl Game<'_> {
             f64::from(p.1) + y_off,
             f64::from(p.2) + 0.5,
         ];
-        let id = self.spawn_mob(&name, at, true)?;
+        let mut skip = false;
+        let id =
+            self.spawn_mob_reason_tracked(&name, at, true, false, false, Some(reason), &mut skip)?;
         // finalizeSpawn's riders (chicken jockeys, spider jockeys...) come
         // with a dispensed mob as with any spawn that is not natural.
-        self.spawn_jockeys(id, false);
+        if !skip {
+            self.spawn_jockeys_reason(id, false, Some(reason));
+        }
         Some(id)
     }
     /// `EquipmentDispenseItemBehavior.dispenseEquipment`: the first living
@@ -1026,7 +1036,12 @@ impl Game<'_> {
     ) -> Result<Dispensed> {
         let kind = stack.item.trim_end_matches("_spawn_egg").to_owned();
         let front = offset(pos, facing);
-        let Some(id) = self.spawn_mob_at(&kind, front, facing != Direction::Up) else {
+        let Some(id) = self.spawn_mob_at(
+            &kind,
+            front,
+            facing != Direction::Up,
+            horizon_client::mobs::finalize::Reason::Dispenser,
+        ) else {
             return Ok((Some(stack), CLICK));
         };
         // EntityType.create: `finalizeSpawn` first, the egg's components after.
@@ -1341,7 +1356,12 @@ impl Game<'_> {
         if let Some(kind) = mob {
             // MobBucketItem.checkExtraContent: the mob (from the bucket, so
             // persistent) calls out, then ENTITY_PLACE.
-            if let Some(id) = self.spawn_mob_at(kind, target, true) {
+            if let Some(id) = self.spawn_mob_at(
+                kind,
+                target,
+                true,
+                horizon_client::mobs::finalize::Reason::Bucket,
+            ) {
                 if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
                     horizon_client::entity_nbt::apply_item_components(m, &stack);
                 }

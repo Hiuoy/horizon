@@ -1287,16 +1287,27 @@ impl Game<'_> {
                 horizon_core::geometry::Vec3::new(spot[0], spot[1], spot[2]),
                 yaw,
             );
+            let event = self.finalize_spawn_event(
+                "minecraft:warden",
+                spot,
+                Some(horizon_client::mobs::finalize::Reason::Triggered),
+                None,
+            );
+            if event.cancelled {
+                return false;
+            }
             // Warden.finalizeSpawn, then Mob.finalizeSpawn's draws from the
             // level random: the follow range bonus and left-handedness.
-            let mut events = Vec::new();
-            warden::finalize(&mut mob, true, &mut events);
-            let _ = self.handle_mob_events(events);
-            let r = &mut self.world.random;
-            let bonus = r.triangle(0.0, 0.11485000000000001);
-            mob.attrs.follow_range += mob.kind.follow_range * bonus;
-            mob.update_max_visited_nodes();
-            let _left_handed = r.next_float() < 0.05;
+            if !event.skip {
+                let mut events = Vec::new();
+                warden::finalize(&mut mob, true, &mut events);
+                let _ = self.handle_mob_events(events);
+                let r = &mut self.world.random;
+                let bonus = r.triangle(0.0, 0.11485000000000001);
+                mob.attrs.follow_range += mob.kind.follow_range * bonus;
+                mob.update_max_visited_nodes();
+                let _left_handed = r.next_float() < 0.05;
+            }
             if !self.warden_fits(&mob) {
                 continue;
             }

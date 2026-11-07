@@ -338,6 +338,7 @@ fn summon_vexes(m: &mut Mob, cx: &mut Cx) {
         cx.events.push(MobEvent::SpawnKind {
             kind: "minecraft:vex".into(),
             at: [f64::from(p[0]), f64::from(p[1]), f64::from(p[2])],
+            reason: Some(super::finalize::Reason::MobSummoned),
             setup: super::SpawnSetup {
                 owner_mob: Some(m.id),
                 home: Some(p),

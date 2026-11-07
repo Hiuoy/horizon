@@ -802,19 +802,31 @@ impl Game<'_> {
                 raider::find_patrol_target_from(&mut mob, [0, 0, 0]);
             }
         }
-        let facts = self.biome_facts(
-            at[0].floor() as i32,
-            at[1].floor() as i32,
-            at[2].floor() as i32,
-        );
-        let difficulty = self.local_difficulty(at);
-        spawning::finalize(&mut mob, &facts, &difficulty);
-        raider::finalize(&mut mob, reason);
+        let spawn_reason = match reason {
+            raider::Reason::Event => Some(horizon_client::mobs::finalize::Reason::Event),
+            raider::Reason::Patrol => Some(horizon_client::mobs::finalize::Reason::Patrol),
+            _ => None,
+        };
+        let event = self.finalize_spawn_event(kind, at, spawn_reason, None);
+        if event.cancelled {
+            return None;
+        }
+        if !event.skip {
+            let facts = self.biome_facts(
+                at[0].floor() as i32,
+                at[1].floor() as i32,
+                at[2].floor() as i32,
+            );
+            spawning::finalize(&mut mob, &facts, &event.difficulty);
+            raider::finalize(&mut mob, reason);
+        }
         let id = mob.id;
         self.mobs.push(mob);
         self.native_mobs_joined(self.mobs.len() - 1, false);
-        self.enchant_spawn_equipment(id);
-        self.halloween_spawn_head(id);
+        if !event.skip {
+            self.enchant_spawn_equipment(id);
+            self.halloween_spawn_head(id);
+        }
         Some(id)
     }
 
@@ -1411,7 +1423,11 @@ impl Game<'_> {
             (m.yaw, m.previous_yaw, m.body_yaw, m.previous_body_yaw) = (yaw, yaw, yaw, yaw);
             (m.head_yaw, m.previous_head_yaw) = (yaw, yaw);
         }
-        self.spawn_jockeys(id, false);
+        self.spawn_jockeys_reason(
+            id,
+            false,
+            Some(horizon_client::mobs::finalize::Reason::Event),
+        );
     }
     /// `VillageSiege.findRandomSpawnPos`: ten tries within 8 blocks of the
     /// spot for a village column where a zombie may spawn.

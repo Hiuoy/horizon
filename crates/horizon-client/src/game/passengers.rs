@@ -3,7 +3,7 @@
 //! jockeys, strider jockeys, zombie horsemen) and the skeleton horse trap.
 //! Saving riders under `Passengers` lives in `persist.rs`.
 use super::Game;
-use horizon_client::mobs::{Species, riders};
+use horizon_client::mobs::{Species, finalize::Reason, riders};
 use horizon_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
@@ -407,6 +407,12 @@ impl Game<'_> {
     /// chickens, skeletons on spiders, piglins and baby striders on striders,
     /// zombies on zombie horses.
     pub(super) fn spawn_jockeys(&mut self, id: u32, natural: bool) {
+        self.spawn_jockeys_reason(id, natural, None)
+    }
+    /// [`spawn_jockeys`](Self::spawn_jockeys) told the parent's spawn reason:
+    /// a jockey's own spawn uses it, except where vanilla names another
+    /// (`Zombie`'s chicken and a strider's rider are JOCKEY spawns).
+    pub(super) fn spawn_jockeys_reason(&mut self, id: u32, natural: bool, reason: Option<Reason>) {
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
             return;
         };
@@ -421,7 +427,8 @@ impl Game<'_> {
                         self.mount_mob(id, chicken);
                     }
                 } else if self.world.random.next_float() < CHICKEN_JOCKEY_ODDS
-                    && let Some(chicken) = self.spawn_mob("minecraft:chicken", at, false)
+                    && let Some(chicken) =
+                        self.spawn_mob_with_reason("minecraft:chicken", at, false, Reason::Jockey)
                 {
                     self.make_chicken_jockey(chicken);
                     self.mount_mob(id, chicken);
@@ -429,7 +436,9 @@ impl Game<'_> {
             }
             // Spider.finalizeSpawn: one in a hundred carries a skeleton.
             Species::Spider if self.world.random.next_int_bound(100).unwrap_or(1) == 0 => {
-                if let Some(skeleton) = self.spawn_mob("minecraft:skeleton", at, false) {
+                if let Some(skeleton) =
+                    self.spawn_mob_reason("minecraft:skeleton", at, false, false, true, reason)
+                {
                     self.mount_mob(skeleton, id);
                 }
             }
@@ -444,7 +453,9 @@ impl Game<'_> {
                             Species::Zombie,
                         )) =>
             {
-                if let Some(zombie) = self.spawn_mob("minecraft:zombie", at, false) {
+                if let Some(zombie) =
+                    self.spawn_mob_reason("minecraft:zombie", at, false, false, true, reason)
+                {
                     if let Some(z) = self.mobs.iter_mut().find(|m| m.id == zombie) {
                         z.extra.set_main_hand(Some("minecraft:iron_spear".into()));
                     }
@@ -455,14 +466,16 @@ impl Game<'_> {
         }
         // After Zombie.finalizeSpawn's chickens: Husk and Drowned mounts.
         match species {
-            Species::Husk if mounts.camel_husk => self.spawn_camel_husk_jockey(id, at),
-            Species::Drowned if mounts.nautilus => self.spawn_zombie_nautilus_jockey(id, at),
+            Species::Husk if mounts.camel_husk => self.spawn_camel_husk_jockey(id, at, reason),
+            Species::Drowned if mounts.nautilus => {
+                self.spawn_zombie_nautilus_jockey(id, at, reason);
+            }
             _ => {}
         }
     }
     /// `Husk.finalizeSpawn`: where a camel husk fits, one natural husk in ten
     /// takes an iron spear and rides one, with a parched in its second seat.
-    fn spawn_camel_husk_jockey(&mut self, id: u32, at: [f64; 3]) {
+    fn spawn_camel_husk_jockey(&mut self, id: u32, at: [f64; 3], reason: Option<Reason>) {
         let (bx, by, bz) = (at[0].floor(), at[1].floor(), at[2].floor());
         let room = {
             let w = self.mob_world_base(&[]);
@@ -477,18 +490,22 @@ impl Game<'_> {
         if let Some(h) = self.mobs.iter_mut().find(|m| m.id == id) {
             h.extra.set_main_hand(Some("minecraft:iron_spear".into()));
         }
-        let Some(camel) = self.spawn_mob("minecraft:camel_husk", at, false) else {
+        let Some(camel) =
+            self.spawn_mob_reason("minecraft:camel_husk", at, false, false, true, reason)
+        else {
             return;
         };
         self.mount_mob(id, camel);
-        if let Some(parched) = self.spawn_mob("minecraft:parched", at, false) {
+        if let Some(parched) =
+            self.spawn_mob_reason("minecraft:parched", at, false, false, true, reason)
+        {
             self.mount_mob(parched, camel);
         }
     }
     /// `Drowned.finalizeSpawn`: half the natural drowned holding a trident,
     /// outside the rivers and oceans that breed more drowned, ride a zombie
     /// nautilus.
-    fn spawn_zombie_nautilus_jockey(&mut self, id: u32, at: [f64; 3]) {
+    fn spawn_zombie_nautilus_jockey(&mut self, id: u32, at: [f64; 3], reason: Option<Reason>) {
         let Some(d) = self.mobs.iter().find(|m| m.id == id) else {
             return;
         };
@@ -511,7 +528,9 @@ impl Game<'_> {
         if frequent {
             return;
         }
-        if let Some(n) = self.spawn_mob("minecraft:zombie_nautilus", at, false) {
+        if let Some(n) =
+            self.spawn_mob_reason("minecraft:zombie_nautilus", at, false, false, true, reason)
+        {
             self.mount_mob(id, n);
         }
     }
@@ -542,7 +561,9 @@ impl Game<'_> {
             if !self.ui.rules.bool("spawn_mobs") {
                 return;
             }
-            if let Some(piglin) = self.spawn_mob("minecraft:zombified_piglin", at, false) {
+            if let Some(piglin) =
+                self.spawn_mob_with_reason("minecraft:zombified_piglin", at, false, Reason::Jockey)
+            {
                 let baby = self.world.random.next_float() < CHICKEN_JOCKEY_ODDS;
                 if let Some(p) = self.mobs.iter_mut().find(|m| m.id == piglin) {
                     p.extra
@@ -555,7 +576,8 @@ impl Game<'_> {
                 self.mount_mob(piglin, id);
             }
         } else if self.world.random.next_int_bound(10).unwrap_or(1) == 0
-            && let Some(baby) = self.spawn_mob("minecraft:strider", at, false)
+            && let Some(baby) =
+                self.spawn_mob_with_reason("minecraft:strider", at, false, Reason::Jockey)
         {
             if let Some(b) = self.mobs.iter_mut().find(|m| m.id == baby) {
                 b.extra.age = -24000;
@@ -612,7 +634,9 @@ impl Game<'_> {
         };
         self.mount_mob(skeleton, id);
         for _ in 0..3 {
-            let Some(other) = self.spawn_mob("minecraft:skeleton_horse", at, true) else {
+            let Some(other) =
+                self.spawn_mob_with_reason("minecraft:skeleton_horse", at, true, Reason::Triggered)
+            else {
                 continue;
             };
             let (dx, dz) = (
@@ -633,7 +657,7 @@ impl Game<'_> {
     /// `SkeletonTrapGoal.createSkeleton`: an iron helmet unless it already
     /// has a helm.
     fn trap_skeleton(&mut self, at: [f64; 3]) -> Option<u32> {
-        let id = self.spawn_mob("minecraft:skeleton", at, true)?;
+        let id = self.spawn_mob_with_reason("minecraft:skeleton", at, true, Reason::Triggered)?;
         let m = self.mobs.iter_mut().find(|m| m.id == id)?;
         m.invulnerable = TRAP_INVULNERABLE;
         if m.extra.head.is_none() {

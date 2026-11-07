@@ -154,7 +154,12 @@ impl Game<'_> {
             f64::from(pos[1]),
             f64::from(pos[2]) + 0.5,
         ];
-        let Some(id) = self.spawn_mob("minecraft:wandering_trader", at, true) else {
+        let Some(id) = self.spawn_mob_with_reason(
+            "minecraft:wandering_trader",
+            at,
+            true,
+            horizon_client::mobs::finalize::Reason::Event,
+        ) else {
             return false;
         };
         for _ in 0..2 {
@@ -184,8 +189,12 @@ impl Game<'_> {
             f64::from(pos[1]),
             f64::from(pos[2]) + 0.5,
         ];
-        if let Some(id) = self.spawn_mob("minecraft:trader_llama", spot, false)
-            && let Some(l) = self.mobs.iter_mut().find(|m| m.id == id)
+        if let Some(id) = self.spawn_mob_with_reason(
+            "minecraft:trader_llama",
+            spot,
+            false,
+            horizon_client::mobs::finalize::Reason::Event,
+        ) && let Some(l) = self.mobs.iter_mut().find(|m| m.id == id)
         {
             // EntitySpawnReason.EVENT: grown up.
             l.extra.age = 0;

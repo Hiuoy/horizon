@@ -126,7 +126,12 @@ impl Game<'_> {
             f64::from(pos[1]),
             f64::from(pos[2]) + 0.5,
         ];
-        let Some(id) = self.spawn_mob("minecraft:cat", at, persistent) else {
+        let Some(id) = self.spawn_mob_with_reason(
+            "minecraft:cat",
+            at,
+            persistent,
+            horizon_client::mobs::finalize::Reason::Natural,
+        ) else {
             return;
         };
         let black = self.structure_tag("minecraft:cats_spawn_as_black");
