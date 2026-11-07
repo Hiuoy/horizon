@@ -289,7 +289,7 @@ pub fn main() -> horizon_client::Result<()> {
             };
             // Vanilla's entity tables all name a random sequence: no level random.
             let mut level = horizon_core::random::LegacyRandom::new(0);
-            let (items, _) = drops::die(&mut m, &death, &mut sequences, &mut level);
+            let (items, _, experience) = drops::die(&mut m, &death, &mut sequences, &mut level);
             for d in items {
                 let _ = match d {
                     drops::Drop::Item(s) => writeln!(out, "{}", line(&s)),
@@ -312,8 +312,14 @@ pub fn main() -> horizon_client::Result<()> {
                         }
                         Ok(())
                     }
-                    drops::Drop::Orb(v) => writeln!(out, "orb {v}"),
                 };
+            }
+            // `ExperienceOrb.award`: the orbs the death's experience splits into.
+            let mut amount = experience;
+            while amount > 0 {
+                let value = drops::orb_value(amount);
+                amount -= value;
+                let _ = writeln!(out, "orb {value}");
             }
         }
     }

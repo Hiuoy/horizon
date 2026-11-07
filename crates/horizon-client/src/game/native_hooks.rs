@@ -6537,6 +6537,39 @@ impl Game<'_> {
         );
     }
 
+    /// A living entity is about to drop its experience on death (NeoForge's
+    /// `LivingExperienceDropEvent`, vanilla's `LivingEntity.dropExperience`):
+    /// `dimension` is its level, `entity` its id and `kind` its type
+    /// (`minecraft:zombie`, `minecraft:player`). `player` is the UUID of the
+    /// player credited with the kill, None when there is none or they have
+    /// logged out; `original` is what vanilla would award and `experience`
+    /// what will, before it is split into orbs. A mod may change `experience`
+    /// or set `cancel` to drop none. Asked only when experience would drop:
+    /// not when a sculk catalyst consumed it, and not for zero. On the
+    /// server. API @API:living_experience_drop@.
+    pub(super) fn native_living_experience_drop(
+        &mut self,
+        dimension: &str,
+        entity: i32,
+        kind: &str,
+        player: Option<u128>,
+        original: i32,
+        experience: &mut i32,
+        cancel: &mut bool,
+    ) {
+        mod_api::dispatch_living_experience_drop(
+            self,
+            mod_api::mods(),
+            dimension,
+            entity,
+            kind,
+            player,
+            original,
+            experience,
+            cancel,
+        );
+    }
+
     /// A mob is about to convert into another type (NeoForge's
     /// `LivingConversionEvent.Pre`, vanilla's `Mob.convertTo`): a zombie
     /// drowning, a piglin or hoglin in the Overworld, a tadpole growing, a

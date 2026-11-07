@@ -3,7 +3,8 @@
 //! `dropAllDeathLoot`: the entity loot table (drawn from the world's random
 //! sequence), `Mob.dropCustomDeathLoot` (equipment by drop chance, with the
 //! entity random), the species' extra drops (an enderman's carried block) and
-//! the experience orbs.
+//! the experience, whose total the game asks the mods about and splits into
+//! orbs (`experience_orbs`).
 use super::{Mob, Species, equine, gear, raider, render::DYE_NAMES, species};
 use crate::random_sequences::RandomSequences;
 use horizon_core::random::{LegacyRandom, RandomSource};
@@ -27,8 +28,6 @@ pub enum Drop {
     /// `Enderman.dropCustomDeathLoot`: the carried block's own drops, rolled
     /// with `enderman::carried_block_tool` (`enderman::carried_block_drops`).
     CarriedBlock(BlockStateId),
-    /// An experience orb of this value.
-    Orb(i32),
 }
 
 /// How the mob died.
@@ -444,8 +443,10 @@ pub fn death_state(m: &mut Mob) {
     }
 }
 /// `LivingEntity.die`'s drops for `m` (equipment it loses is removed from
-/// it). Returns the drops in spawn order and whether a charged creeper
-/// killer dropped a head (`Creeper.droppedSkulls`).
+/// it). Returns the drops in spawn order, whether a charged creeper killer
+/// dropped a head (`Creeper.droppedSkulls`) and the experience
+/// `LivingEntity.dropExperience` would award, which the game asks the mods
+/// about and splits into orbs.
 /// `level_random` is the level's random: what a table rolls with when it has
 /// neither a seed nor a random sequence (`LootContext.Builder.create`).
 pub fn die(
@@ -453,7 +454,7 @@ pub fn die(
     d: &Death,
     sequences: &mut RandomSequences,
     level_random: &mut LegacyRandom,
-) -> (Vec<Drop>, bool) {
+) -> (Vec<Drop>, bool, i32) {
     let mut out = Vec::new();
     death_state(m);
     let this = loot_entity(m, d.vehicle.clone());
@@ -589,16 +590,40 @@ pub fn die(
             m.extra.chested = false;
         }
     }
-    // dropExperience.
-    if killed_by_player && drops_experience(m) && d.mob_drops {
-        let mut amount = base_experience(m);
-        while amount > 0 {
-            let value = orb_value(amount);
-            amount -= value;
-            out.push(Drop::Orb(value));
-        }
+    // dropExperience: the total, before ExperienceOrb.award splits it into
+    // orbs. It is computed even when a sculk catalyst consumed the experience
+    // (the catalyst drew the reward on this same clone first), so the draws
+    // keep vanilla's order; the game then drops none.
+    let experience = if killed_by_player && drops_experience(m) && d.mob_drops {
+        base_experience(m)
+    } else {
+        0
+    };
+    (out, skulls, experience)
+}
+/// The experience orbs a dying entity leaves: `original` as
+/// `LivingEntity.dropExperience` would award it, after the mods (`hook`
+/// changes the amount and may set `cancel`), split the way
+/// `ExperienceOrb.award` splits it. Empty when vanilla would drop nothing, so
+/// no mod is asked.
+pub fn experience_orbs(original: i32, hook: impl FnOnce(&mut i32, &mut bool)) -> Vec<i32> {
+    if original <= 0 {
+        return Vec::new();
     }
-    (out, skulls)
+    let mut experience = original;
+    let mut cancel = false;
+    hook(&mut experience, &mut cancel);
+    if cancel {
+        return Vec::new();
+    }
+    let mut orbs = Vec::new();
+    let mut amount = experience.max(0);
+    while amount > 0 {
+        let value = orb_value(amount);
+        amount -= value;
+        orbs.push(value);
+    }
+    orbs
 }
 /// The loot table `die` rolls for `m` (`LivingEntity.getLootTable`), when it
 /// rolls one: none with `doMobLoot` off, nor for a baby that isn't a monster.
@@ -722,7 +747,7 @@ mod death_loot_table_tests {
             }
             m.extra.death_loot_seed = seed;
             let mut sequences = RandomSequences::default();
-            let (out, _) = die(&mut m, &death, &mut sequences, &mut LegacyRandom::new(7));
+            let (out, _, _) = die(&mut m, &death, &mut sequences, &mut LegacyRandom::new(7));
             out.into_iter()
                 .filter_map(|d| match d {
                     Drop::Item(s) => Some(s.item),
@@ -780,5 +805,32 @@ mod slot_tests {
         let body = slot_item(&zombie, "body").unwrap();
         assert_eq!(body.item, "minecraft:iron_helmet");
         assert!(slot_item(&zombie, "head").is_none());
+    }
+}
+#[cfg(test)]
+mod experience_tests {
+    use super::*;
+
+    /// `LivingEntity.dropExperience` through the mods and `ExperienceOrb.award`:
+    /// a mod that changes the amount changes the orbs' total, a cancel drops
+    /// none, and nothing to drop means no mod is asked.
+    #[test]
+    fn a_dying_entitys_experience_is_split_after_the_hook() {
+        let mut asked = 0;
+        let orbs = experience_orbs(5, |experience, cancel| {
+            asked += 1;
+            assert!(!*cancel);
+            *experience *= 2;
+        });
+        assert_eq!(asked, 1, "the mods hear the amount once");
+        assert_eq!(orbs.iter().sum::<i32>(), 10);
+        // ExperienceOrb.getExperienceValue: 2477, 1237, ... then the rest.
+        assert_eq!(orbs, [7, 3]);
+
+        let orbs = experience_orbs(5, |_, cancel| *cancel = true);
+        assert!(orbs.is_empty(), "a cancel drops no experience");
+
+        let orbs = experience_orbs(0, |_, _| panic!("nothing would drop: no mod is asked"));
+        assert!(orbs.is_empty());
     }
 }

@@ -1,0 +1,17 @@
+{
+  "hooks": [
+    {
+      "name": "living_experience_drop",
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_living_experience_drop",
+      "neoforge": "LivingExperienceDropEvent",
+      "side": "server",
+      "cancellable": true,
+      "mod_api": {
+        "contract": "cancel",
+        "out": "cancel"
+      }
+    }
+  ],
+  "rust_summary": "a living entity's experience on death, which a mod can change or cancel (`native_living_experience_drop`).",
+  "doc_summary": "the experience a living entity drops on death: `native_living_experience_drop(dimension, entity, kind, player, original, experience, cancel)` is heard once the amount is known, before `ExperienceOrb.award` splits it into orbs, as NeoForge's `LivingExperienceDropEvent` is. `entity` is the dying entity's id and `kind` its type, `player` the player credited with the kill (None when there is none or they have logged out), `original` what vanilla would award and `experience` what will. A mod may change `experience`, or set `cancel` to drop no experience at all. Not heard when nothing would drop, nor when a sculk catalyst consumed it. Server-side. Bundles need \"hooks\": @API:living_experience_drop@."
+}

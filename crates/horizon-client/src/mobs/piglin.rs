@@ -2302,7 +2302,7 @@ mod crossbow_tests {
         let mut m = piglin();
         hold_in_offhand(&mut m, "minecraft:gold_ingot".into());
         assert!(!m.persistent);
-        let (drops, _) = die(
+        let (drops, _, _) = die(
             &mut m,
             &death,
             &mut RandomSequences::default(),

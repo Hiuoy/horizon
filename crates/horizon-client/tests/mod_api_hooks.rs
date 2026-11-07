@@ -673,3 +673,93 @@ fn a_screen_background_hook_can_cancel_vanilla_gradient() {
         "inventory cancels vanilla gradient for blur/custom draw"
     );
 }
+
+/// NeoForge's `LivingExperienceDropEvent`: the first mod changes the amount
+/// the second one sees, and a cancel drops no experience and stops later mods.
+#[test]
+fn a_dying_entitys_experience_is_changed_in_turn_and_cancel_stops_later_mods() {
+    use horizon_client::mod_api::{
+        Flow, Hooks, Host, LivingExperienceDropEvent, dispatch_living_experience_drop,
+    };
+    struct TestHost;
+    impl Host for TestHost {}
+
+    struct Double;
+    impl Hooks for Double {
+        fn living_experience_drop(
+            &self,
+            _host: &mut dyn Host,
+            event: &mut LivingExperienceDropEvent<'_>,
+        ) -> Flow {
+            assert_eq!(event.dimension, "minecraft:overworld");
+            assert_eq!(event.entity, 7);
+            assert_eq!(event.kind, "minecraft:zombie");
+            assert_eq!(event.player, Some(9));
+            assert_eq!(event.original, 5);
+            event.experience *= 2;
+            Flow::Continue
+        }
+    }
+    struct See;
+    impl Hooks for See {
+        fn living_experience_drop(
+            &self,
+            _host: &mut dyn Host,
+            event: &mut LivingExperienceDropEvent<'_>,
+        ) -> Flow {
+            assert_eq!(event.experience, 10, "the second mod sees the change");
+            Flow::Continue
+        }
+    }
+    let mods: Vec<Box<dyn Hooks>> = vec![Box::new(Double), Box::new(See)];
+    let mut host = TestHost;
+    let (mut experience, mut cancel) = (5, false);
+    dispatch_living_experience_drop(
+        &mut host,
+        &mods,
+        "minecraft:overworld",
+        7,
+        "minecraft:zombie",
+        Some(9),
+        5,
+        &mut experience,
+        &mut cancel,
+    );
+    assert_eq!((experience, cancel), (10, false));
+
+    struct Refuse;
+    impl Hooks for Refuse {
+        fn living_experience_drop(
+            &self,
+            _host: &mut dyn Host,
+            event: &mut LivingExperienceDropEvent<'_>,
+        ) -> Flow {
+            event.experience = 2;
+            Flow::Cancel
+        }
+    }
+    struct Unreached;
+    impl Hooks for Unreached {
+        fn living_experience_drop(
+            &self,
+            _host: &mut dyn Host,
+            _event: &mut LivingExperienceDropEvent<'_>,
+        ) -> Flow {
+            panic!("a cancelled drop is not offered to later mods");
+        }
+    }
+    let mods: Vec<Box<dyn Hooks>> = vec![Box::new(Refuse), Box::new(Unreached)];
+    let (mut experience, mut cancel) = (5, false);
+    dispatch_living_experience_drop(
+        &mut host,
+        &mods,
+        "minecraft:overworld",
+        7,
+        "minecraft:zombie",
+        None,
+        5,
+        &mut experience,
+        &mut cancel,
+    );
+    assert!(cancel, "the drop is cancelled");
+}

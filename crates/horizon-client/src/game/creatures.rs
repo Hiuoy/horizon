@@ -1757,7 +1757,8 @@ impl Game<'_> {
     }
     /// `dropAllDeathLoot` through `mobs::drops`: the entity loot table from the
     /// world's random sequence, equipment by drop chance, species extras and
-    /// the experience orbs, spawned in order.
+    /// the experience, which the mods hear before `ExperienceOrb.award` splits
+    /// it; the orbs spawn last, in order.
     /// The killing player as a loot entity: their worn and held items, read
     /// from the guest who struck the last blow when a server's player did
     /// (on the server thread that is every player, the window's too), so
@@ -1886,9 +1887,10 @@ impl Game<'_> {
         };
         // LootContextParams.ORIGIN of a death: the mob's position.
         let place = self.loot_place_at([m.position.x, m.position.y, m.position.z], None);
-        let (items, skulls) = horizon_world::loot::with_native_loot_place(place, || {
-            drops::die(m, &death, &mut self.rand_sequences, &mut self.world.random)
-        });
+        let (items, skulls, experience) =
+            horizon_world::loot::with_native_loot_place(place, || {
+                drops::die(m, &death, &mut self.rand_sequences, &mut self.world.random)
+            });
         if skulls && let Some(Who::Mob(id)) = m.last_damage.and_then(|(d, _)| d.attacker) {
             // Creeper.droppedSkulls: one head per charged explosion.
             self.combat.charged_exploders.retain(|c| *c != id);
@@ -1897,8 +1899,8 @@ impl Game<'_> {
             }
         }
         let raider = horizon_client::mobs::raider::is_raider(m.species());
-        // The item drops come before the carried block and the orbs, so the
-        // mods get them all at once and they still spawn in that order.
+        // The item drops come before the carried block and the experience, so
+        // the mods get them all at once and they still spawn in that order.
         let mut stacks = Vec::new();
         let mut rest = Vec::new();
         for d in items {
@@ -1939,23 +1941,39 @@ impl Game<'_> {
             self.spawn_item(item, pos, dispenser::new_item_motion(), 10);
         }
         for d in rest {
-            match d {
-                drops::Drop::CarriedBlock(state) => {
-                    // Enderman.dropCustomDeathLoot: spawnAtLocation for each
-                    // of the carried block's silk-touch drops.
-                    let stacks = horizon_client::mobs::enderman::carried_block_drops(
-                        world_items!(self),
-                        self.pack.assets.registry,
-                        state,
-                        &mut self.world.random,
-                        Some((&mut self.rand_sequences, self.level.seed)),
-                    );
-                    for item in stacks {
-                        self.spawn_item(item, pos, dispenser::new_item_motion(), 10);
-                    }
+            if let drops::Drop::CarriedBlock(state) = d {
+                // Enderman.dropCustomDeathLoot: spawnAtLocation for each
+                // of the carried block's silk-touch drops.
+                let stacks = horizon_client::mobs::enderman::carried_block_drops(
+                    world_items!(self),
+                    self.pack.assets.registry,
+                    state,
+                    &mut self.world.random,
+                    Some((&mut self.rand_sequences, self.level.seed)),
+                );
+                for item in stacks {
+                    self.spawn_item(item, pos, dispenser::new_item_motion(), 10);
                 }
-                drops::Drop::Orb(value) if !consumed => self.spawn_orbs(pos, value as u32),
-                drops::Drop::Item(_) | drops::Drop::Stack(_) | drops::Drop::Orb(_) => {}
+            }
+        }
+        // LivingEntity.dropExperience: the mods hear the amount before
+        // ExperienceOrb.award splits it, and a cancel drops none. Asked after
+        // the items, as the orbs are spawned last.
+        let original = experience;
+        if !consumed {
+            let orbs = drops::experience_orbs(original, |experience, cancel| {
+                self.native_living_experience_drop(
+                    self.dim.id(),
+                    m.id as i32,
+                    &kind,
+                    player_uuid,
+                    original,
+                    experience,
+                    cancel,
+                );
+            });
+            for value in orbs {
+                self.spawn_orbs(pos, value as u32);
             }
         }
     }

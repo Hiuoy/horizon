@@ -723,7 +723,7 @@ mod tests {
         ] {
             let mut m = enderman();
             m.extra.carried = registry.default_state(block);
-            let (out, _) = drops::die(
+            let (out, _, _) = drops::die(
                 &mut m,
                 &death(true),
                 &mut sequences,
@@ -748,7 +748,7 @@ mod tests {
         // doMobLoot off: no dropCustomDeathLoot, so no block either.
         let mut m = enderman();
         m.extra.carried = registry.default_state("minecraft:grass_block");
-        let (out, _) = drops::die(
+        let (out, _, _) = drops::die(
             &mut m,
             &death(false),
             &mut sequences,

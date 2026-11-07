@@ -4335,6 +4335,7 @@ impl Game<'_> {
             }
             .death_reward(self.ui.rules.bool("keep_inventory") || g.game_mode == SPECTATOR);
             let (name, uuid) = (g.name.clone(), g.uuid);
+            let dimension = g.dimension.clone();
             // ServerPlayer.die: dropAllDeathLoot unless a spectator, from the eyes less 0.3.
             let drops = (g.game_mode != SPECTATOR)
                 .then(|| [at[0], at[1] + g.eye_height() - f64::from(0.3f32), at[2]]);
@@ -4440,9 +4441,25 @@ impl Game<'_> {
                 game.stats.reset_death_timers();
             });
             // The experience the catalyst took does not drop (`Player.
-            // skipDropExperience`).
-            if !consumed {
-                self.spawn_orbs(at, reward);
+            // skipDropExperience`). `Player.isAlwaysExperienceDropper` always
+            // awards it otherwise, so `LivingEntity.dropExperience` is where
+            // the mods hear the amount, before `ExperienceOrb.award` splits it.
+            if !consumed && reward > 0 {
+                let player = self.guest_kill_credit_player(host, conn);
+                let mut experience = reward as i32;
+                let mut cancel = false;
+                self.native_living_experience_drop(
+                    &dimension,
+                    id,
+                    "minecraft:player",
+                    player,
+                    reward as i32,
+                    &mut experience,
+                    &mut cancel,
+                );
+                if !cancel && experience > 0 {
+                    self.spawn_orbs(at, experience as u32);
+                }
             }
         }
     }
@@ -4574,6 +4591,29 @@ impl Game<'_> {
             .as_ref()
             .filter(|d| d.id == id)
             .map(|_| "minecraft:ender_dragon".into())
+    }
+
+    /// The player a dying guest's combat record credits with the kill
+    /// (`LivingExperienceDropEvent.getAttackingPlayer`): the player in place
+    /// or a guest. None for a mob, the world, or a player who has left.
+    fn guest_kill_credit_player(&mut self, host: &LanHost, conn: u32) -> Option<u128> {
+        let id = self
+            .guest_combat
+            .get(&conn)?
+            .kill_credit(self.world.game_time)?;
+        let in_place = self.lan_acting.is_none()
+            && self
+                .player
+                .as_ref()
+                .is_some_and(|p| p.entity_id as u32 == id);
+        if in_place {
+            return Some(self.native_acting_id());
+        }
+        host.hub
+            .guests
+            .iter()
+            .find(|g| g.entity_id as u32 == id)
+            .map(|g| g.uuid)
     }
 
     /// The dying guest's last blow (`LivingEntity.getLastDamageSource`), its
