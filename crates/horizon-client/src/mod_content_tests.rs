@@ -480,18 +480,9 @@ fn creative_tabs_keep_vanilla_items_missing_from_search() {
         .into(),
     };
     let plan = Plan {
-        blocks: Vec::new(),
-        items: Vec::new(),
         vanilla_items: tab.items.iter().cloned().collect(),
-        effects: Vec::new(),
-        fluids: Vec::new(),
-        entity_types: Vec::new(),
-        menu_types: Vec::new(),
-        states: 0,
-        defaults: BTreeMap::new(),
-        sounds: BTreeMap::new(),
         tabs: vec![&tab],
-        names: BTreeMap::new(),
+        ..Plan::empty()
     };
     let mut doc: J = serde_json::from_str(
         r#"{"tabs":[{"type":"SEARCH","items":["{count:1,id:\"minecraft:stone\"}"]}]}"#,

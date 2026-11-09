@@ -656,6 +656,7 @@ struct Plan<'a> {
     /// Every vanilla item id, including items omitted from the search tab.
     vanilla_items: BTreeSet<String>,
     effects: Vec<&'a MobEffect>,
+    potions: Vec<&'a horizon_mods::content::Potion>,
     fluids: Vec<&'a Fluid>,
     entity_types: Vec<&'a EntityType>,
     menu_types: Vec<&'a MenuType>,
@@ -1238,6 +1239,7 @@ impl<'a> Plan<'a> {
             items,
             vanilla_items,
             effects: mob_effects(mods),
+            potions: potions(mods),
             fluids: fluids(mods),
             entity_types: entity_types(mods),
             menu_types: menu_types(mods),
@@ -1600,10 +1602,7 @@ impl<'a> Plan<'a> {
                     ("minecraft:block", new_blocks.clone()),
                     ("minecraft:block_entity_type", new_blocks),
                 ];
-                if !self.effects.is_empty() {
-                    let new_effects = self.effects.iter().map(|e| e.id.clone());
-                    registries.push(("minecraft:mob_effect", new_effects.collect()));
-                }
+                registries.extend(self.effect_registries());
                 // Fluid tags go by these ids: a mod fluid's source, then its flowing form.
                 if !self.fluids.is_empty() {
                     let new_fluids = self
@@ -1663,14 +1662,7 @@ impl<'a> Plan<'a> {
                 if let Some(J::Arr(ids)) = doc.at("by_registry/minecraft:block/ids") {
                     ids.extend(new_blocks());
                 }
-                // `/effect` and the mob_effect resource arguments.
-                let new_effects = || self.effects.iter().map(|e| J::Str(e.id.clone()));
-                if let Some(J::Arr(ids)) = doc.at("effects") {
-                    ids.extend(new_effects());
-                }
-                if let Some(J::Arr(ids)) = doc.at("by_registry/minecraft:mob_effect/ids") {
-                    ids.extend(new_effects());
-                }
+                self.effect_command_ids(doc);
                 // Fluid tag files and fluid arguments.
                 if let Some(J::Arr(ids)) = doc.at("by_registry/minecraft:fluid/ids") {
                     ids.extend(
@@ -3265,6 +3257,9 @@ fn stamp(base: &Path, mods: &[ContentMod]) -> Result<String> {
 #[path = "mod_content_fluids.rs"]
 mod fluids;
 pub use fluids::fluids;
+#[path = "mod_content_effects.rs"]
+mod effects;
+pub use effects::potions;
 
 #[cfg(test)]
 #[path = "mod_content_tests.rs"]

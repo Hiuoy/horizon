@@ -106,8 +106,8 @@ Unknown keys are refused, so a typo is an error, not a silently ignored permissi
 A content mod has capability `registries` and carries `assets/` and `data/` in the `.hmod`. It adds blocks and items
 by declaring them in `data/<id>/horizon/block/*.json` and `data/<id>/horizon/item/*.json`, each copying a vanilla
 template ([modpacks.md](modpacks.md#registries-02-data-driven-blocks-items-and-mob-effects)), and creative tabs, mob
-effects, fluids, entity types and menu types (each below) in `creative_tab/`, `mob_effect/`, `fluid/`, `entity_type/`
-and `menu/` beside them. LAN and dedicated server players play with them when they run the same mods: a client whose mods add different
+effects, potions, fluids, entity types and menu types (each below) in `creative_tab/`, `mob_effect/`, `potion/`,
+`fluid/`, `entity_type/` and `menu/` beside them. LAN and dedicated server players play with them when they run the same mods: a client whose mods add different
 content is refused when it joins, with the reason.
 
 A server that has content mods on also checks them one by one (`horizon_protocol::mod_list`, channel
@@ -348,6 +348,23 @@ dedicated server players who run the same mods (its network id follows vanilla's
 as vanilla's; without one it draws as the missing texture). It does nothing on its own yet: no tick behaviour and no
 attribute modifiers. A world opened without the mod drops the effect from its players and mobs. Clients join a server
 only with the same mods' effects, as with its blocks.
+
+A mod potion is declared in `data/<id>/horizon/potion/<name>.json` with what vanilla's `Potion` takes: its `effects`,
+each an effect `id` (vanilla's `minecraft:...` or one of the mod's own), a `duration` in ticks (-1 for ever) and an
+`amplifier` (0 to 255, the level less one), both 0 when left out; and its `name`, the suffix of its translation keys,
+which is the file's path when left out. A potion with no effects is a base, as vanilla's `awkward` is:
+
+```json
+{ "effects": [{ "id": "ruby:glow", "duration": 3600 }, { "id": "minecraft:speed", "duration": 3600, "amplifier": 1 }] }
+```
+
+It is the potion `<id>:<name>`, after vanilla's (its network id follows theirs). Its bottle, splash and lingering bottles
+and tipped arrow take its name from the mod's `assets/<id>/lang/` (`item.minecraft.potion.effect.<name>`, and the same
+with `splash_potion`, `lingering_potion` and `tipped_arrow`), its effects and their colours' mix, and they give its
+effects. `/give` takes its id in `potion_contents`. A brewing stand
+brews it from a `minecraft:brewing` recipe in the mod's `data/<id>/recipe/`, in vanilla's form (one recipe per bottle,
+as in vanilla's `recipe/brewing/`): 26.3 made brewing mixes recipes, so that is how a port writes NeoForge's
+`RegisterBrewingRecipesEvent`. Clients join a server only with the same mods' potions.
 
 A mod fluid is declared in `data/<id>/horizon/fluid/<name>.json`. It copies `minecraft:water` or `minecraft:lava`
 (`template`) with NeoForge's `FluidType` and `BaseFlowingFluid.Properties` numbers in snake case, each optional (left

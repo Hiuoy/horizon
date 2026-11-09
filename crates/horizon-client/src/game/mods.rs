@@ -169,6 +169,7 @@ fn content_root_at(
                 Err(e) => {
                     log::warn!("Horizon: content mods not loaded: {e}");
                     register_mob_effects(&[]);
+                    register_potions(&[]);
                     return root.to_owned();
                 }
             },
@@ -219,6 +220,7 @@ fn content_root_at(
                 );
             }
             register_mob_effects(&mods);
+            register_potions(&mods);
             register_entity_types(&mods);
             register_menu_types(&mods);
             out
@@ -226,6 +228,7 @@ fn content_root_at(
         Err(e) => {
             log::warn!("Horizon: content mods not loaded: {e}");
             register_mob_effects(&[]);
+            register_potions(&[]);
             register_entity_types(&[]);
             register_menu_types(&[]);
             root.to_owned()
@@ -336,6 +339,27 @@ fn register_mob_effects(mods: &[horizon_client::mod_content::ContentMod]) {
             .ne(ids.iter().map(String::as_str))
     {
         log::warn!("Horizon: the mods' mob effects changed; restart the game to use them");
+    }
+}
+
+/// The mods' potions join vanilla's (`brewing::potion`), as their mob
+/// effects do: the startup root's, none included, stay until restart.
+fn register_potions(mods: &[horizon_client::mod_content::ContentMod]) {
+    use horizon_client::brewing;
+    let potions = horizon_client::mod_content::potions(mods);
+    let ids: Vec<String> = potions.iter().map(|p| p.id.clone()).collect();
+    let set = brewing::register_mod_potions(potions.into_iter().map(|p| {
+        let effects = p.effects.iter();
+        let effects = effects.map(|e| (e.id.clone(), e.duration, e.amplifier));
+        (p.id.clone(), p.name.clone(), effects.collect())
+    }));
+    if !set
+        && brewing::mod_potions()
+            .iter()
+            .map(|p| p.id)
+            .ne(ids.iter().map(String::as_str))
+    {
+        log::warn!("Horizon: the mods' potions changed; restart the game to use them");
     }
 }
 

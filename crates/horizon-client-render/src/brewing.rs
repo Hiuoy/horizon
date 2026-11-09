@@ -12,9 +12,9 @@ use serde_json::Value;
 use std::{collections::HashSet, path::Path};
 
 pub use horizon_client_core::potions::{
-    BASE_POTION_COLOR, Category, EFFECTS, EffectDef, POTIONS, PotionDef, all_effects,
-    description_id, effect, is_mod_effect, mod_effects, namespaced, potion, potion_color,
-    register_mod_effects, set_pack_colors,
+    BASE_POTION_COLOR, Category, EFFECTS, EffectDef, POTIONS, PotionDef, all_effects, all_potions,
+    description_id, effect, is_mod_effect, mod_effects, mod_potions, namespaced, potion,
+    potion_color, register_mod_effects, register_mod_potions, set_pack_colors,
 };
 /// `MobEffectUtil.formatDuration` at 20 TPS.
 pub fn format_duration(ticks: i32) -> String {

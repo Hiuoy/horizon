@@ -574,11 +574,10 @@ impl Special {
                 let cells = (0..9)
                     .map(|i| Some(if i == 4 { source } else { material }.clone()))
                     .collect();
-                // Any potion's tipped arrow.
+                // Any potion's tipped arrow, the mods' potions too.
                 let potions = |item: ItemStack| -> Vec<ItemStack> {
-                    crate::brewing::POTIONS
-                        .iter()
-                        .map(|p| item.clone().with_potion(&format!("minecraft:{}", p.id)))
+                    crate::brewing::all_potions()
+                        .map(|p| item.clone().with_potion(&p.key()))
                         .collect()
                 };
                 let all = potions(result.create());

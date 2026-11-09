@@ -1,7 +1,7 @@
 //! A content mod's `assets/` and `data/` (API 0.2, docs/modpacks.md): the
 //! files it adds to the game's resource tree, and the blocks, items, mob
-//! effects, entity types and menu types it declares in
-//! `data/<id>/horizon/{block,item,mob_effect,entity_type,menu}/`.
+//! effects, potions, entity types and menu types it declares in
+//! `data/<id>/horizon/{block,item,mob_effect,potion,entity_type,menu}/`.
 //!
 //! Content is data, not code: nothing here runs in the sandbox. What a mod
 //! may add is fenced instead. Its own namespaces (its id and the ones its
@@ -442,6 +442,42 @@ pub struct MobEffect {
     pub color: u32,
 }
 
+/// A potion the mod adds: what `new Potion(name, effects...)` takes. Its
+/// bottles, splash and lingering bottles and tipped arrows come with it, and
+/// a `minecraft:brewing` recipe in the mod's data brews it (vanilla 26.3's
+/// brewing mixes are recipes, where NeoForge's `RegisterBrewingRecipesEvent`
+/// adds them in code).
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Potion {
+    /// `<mod id>:<path>`.
+    #[serde(skip)]
+    pub id: String,
+    /// The suffix of its translation keys (`item.minecraft.potion.effect.<name>`
+    /// and the splash, lingering and tipped arrow ones). The file's path when
+    /// left out, as `registryName.getPath()` in NeoForge's guide.
+    #[serde(default)]
+    pub name: String,
+    /// Its `MobEffectInstance`s, in order: none for a base potion such as
+    /// vanilla's `awkward`.
+    #[serde(default)]
+    pub effects: Vec<PotionEffect>,
+}
+
+/// One of a potion's effects: `new MobEffectInstance(effect, duration, amplifier)`.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PotionEffect {
+    /// A vanilla effect (`minecraft:...`) or one of the mod's own.
+    pub id: String,
+    /// Ticks, -1 for ever. 0 when left out, as in `MobEffectInstance.CODEC`.
+    #[serde(default)]
+    pub duration: i32,
+    /// The level less one, 0 to 255. 0 when left out.
+    #[serde(default)]
+    pub amplifier: i32,
+}
+
 mod fluid;
 use fluid::check_fluid;
 pub use fluid::{FLUID_TEMPLATES, Fluid};
@@ -594,6 +630,8 @@ pub struct Content {
     pub blocks: Vec<Block>,
     pub items: Vec<Item>,
     pub effects: Vec<MobEffect>,
+    /// Its potions, by id ([`Potion`]).
+    pub potions: Vec<Potion>,
     /// Its fluids, by id ([`Fluid`]).
     pub fluids: Vec<Fluid>,
     /// Its creative inventory tabs, by id.
@@ -713,6 +751,7 @@ impl Content {
             blocks: Vec::new(),
             items: Vec::new(),
             effects: Vec::new(),
+            potions: Vec::new(),
             fluids: Vec::new(),
             creative_tabs: Vec::new(),
             entity_types: Vec::new(),
@@ -732,6 +771,7 @@ impl Content {
             blocks: Vec::new(),
             items: Vec::new(),
             effects: Vec::new(),
+            potions: Vec::new(),
             fluids: Vec::new(),
             creative_tabs: Vec::new(),
             entity_types: Vec::new(),
@@ -845,6 +885,7 @@ impl Content {
         let mut blocks = Vec::new();
         let mut items = Vec::new();
         let mut effects = Vec::new();
+        let mut potions = Vec::new();
         let mut fluids = Vec::new();
         let mut tabs = Vec::new();
         let mut types = Vec::new();
@@ -870,7 +911,7 @@ impl Content {
             }
             if !own && top == "data" && rest.starts_with("horizon/") {
                 return Err(format!(
-                    "{name}: blocks, items, mob effects, fluids, entity types and menu types are declared in data/{id}/horizon/"
+                    "{name}: blocks, items, mob effects, potions, fluids, entity types and menu types are declared in data/{id}/horizon/"
                 ));
             }
             let Some(decl) = (own && top == "data")
@@ -892,6 +933,8 @@ impl Content {
                 items.push((item, name.clone()));
             } else if let Some(effect) = parse("mob_effect") {
                 effects.push((effect, name.clone()));
+            } else if let Some(potion) = parse("potion") {
+                potions.push((potion, name.clone()));
             } else if let Some(fluid) = parse("fluid") {
                 fluids.push((fluid, name.clone()));
             } else if let Some(tab) = parse("creative_tab") {
@@ -902,7 +945,7 @@ impl Content {
                 menus.push((menu, name.clone()));
             } else {
                 return Err(format!(
-                    "{name}: data/{id}/horizon/ holds block/, item/, mob_effect/, fluid/, creative_tab/, entity_type/ and menu/*.json only"
+                    "{name}: data/{id}/horizon/ holds block/, item/, mob_effect/, potion/, fluid/, creative_tab/, entity_type/ and menu/*.json only"
                 ));
             }
         }
@@ -981,6 +1024,44 @@ impl Content {
                 return Err(format!("{name}: color is RGB, 0 to 16777215 (0xFFFFFF)"));
             }
             self.effects.push(MobEffect { id: effect, ..file });
+        }
+        // After every effect: a potion may give the mod's own.
+        for (potion, name) in potions {
+            let file: Potion =
+                serde_json::from_slice(&reader.read(&name)?).map_err(|e| format!("{name}: {e}"))?;
+            let suffix = match file.name.as_str() {
+                "" => potion
+                    .split_once(':')
+                    .map_or("", |(_, path)| path)
+                    .to_owned(),
+                own => own.to_owned(),
+            };
+            let plain =
+                |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit() || b"_./-".contains(&b);
+            if !suffix.bytes().all(plain) {
+                return Err(format!(
+                    "{name}: name {suffix:?} takes lowercase letters, digits and _ . / - only"
+                ));
+            }
+            for effect in &file.effects {
+                if !vanilla_id(&effect.id) && !self.effects.iter().any(|e| e.id == effect.id) {
+                    return Err(format!(
+                        "{name}: effect {:?} is not a vanilla effect (minecraft:...) or one of this mod's",
+                        effect.id
+                    ));
+                }
+                if !(0..=255).contains(&effect.amplifier) {
+                    return Err(format!("{name}: amplifier is 0 to 255"));
+                }
+                if effect.duration < -1 {
+                    return Err(format!("{name}: duration is ticks, or -1 for ever"));
+                }
+            }
+            self.potions.push(Potion {
+                id: potion,
+                name: suffix,
+                effects: file.effects,
+            });
         }
         // After every block and item: a fluid's bucket and block are the mod's own.
         let mut fluid_ids = BTreeSet::new();
@@ -1888,6 +1969,80 @@ capabilities = ["registries"]
         ] {
             let files: &[(&str, &[u8])] =
                 &[("data/ruby/horizon/mob_effect/a.json", file.as_bytes())];
+            let e = hmod(case, MANIFEST_TEXT, files).unwrap_err();
+            assert!(e.contains(why), "{case}: {e}");
+        }
+    }
+
+    #[test]
+    fn potions_take_a_name_and_their_effects() {
+        let files: &[(&str, &[u8])] = &[
+            (
+                "data/ruby/horizon/mob_effect/glow.json",
+                br#"{"category": "beneficial", "color": 16711680}"#,
+            ),
+            (
+                "data/ruby/horizon/potion/glow.json",
+                br#"{"effects": [{"id": "ruby:glow", "duration": 3600},
+                    {"id": "minecraft:speed", "duration": 1800, "amplifier": 1}]}"#,
+            ),
+            (
+                "data/ruby/horizon/potion/long/glow.json",
+                br#"{"name": "glow", "effects": [{"id": "ruby:glow", "duration": -1}]}"#,
+            ),
+            ("data/ruby/horizon/potion/base.json", br#"{}"#),
+        ];
+        let content = hmod("potions", MANIFEST_TEXT, files).unwrap();
+        let effect = |id: &str, duration, amplifier| PotionEffect {
+            id: id.to_owned(),
+            duration,
+            amplifier,
+        };
+        let potion = |id: &str, name: &str, effects| Potion {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            effects,
+        };
+        assert_eq!(
+            content.potions,
+            [
+                potion("ruby:base", "base", vec![]),
+                potion(
+                    "ruby:glow",
+                    "glow",
+                    vec![
+                        effect("ruby:glow", 3600, 0),
+                        effect("minecraft:speed", 1800, 1)
+                    ]
+                ),
+                potion("ruby:long/glow", "glow", vec![effect("ruby:glow", -1, 0)]),
+            ]
+        );
+        for (case, file, why) in [
+            (
+                "potion-effect",
+                r#"{"effects": [{"id": "other:glow", "duration": 1}]}"#,
+                "not a vanilla effect",
+            ),
+            (
+                "potion-amplifier",
+                r#"{"effects": [{"id": "minecraft:speed", "amplifier": 256}]}"#,
+                "amplifier is 0 to 255",
+            ),
+            (
+                "potion-duration",
+                r#"{"effects": [{"id": "minecraft:speed", "duration": -2}]}"#,
+                "duration is ticks",
+            ),
+            ("potion-name", r#"{"name": "Glow"}"#, "lowercase letters"),
+            ("potion-key", r#"{"color": 1}"#, "unknown field"),
+            (
+                "potion-effect-key",
+                r#"{"effects": [{"id": "minecraft:speed", "ambient": true}]}"#,
+                "unknown field",
+            ),
+        ] {
+            let files: &[(&str, &[u8])] = &[("data/ruby/horizon/potion/a.json", file.as_bytes())];
             let e = hmod(case, MANIFEST_TEXT, files).unwrap_err();
             assert!(e.contains(why), "{case}: {e}");
         }

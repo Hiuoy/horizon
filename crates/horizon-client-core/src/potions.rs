@@ -308,9 +308,72 @@ pub const POTIONS: &[PotionDef] = &[
     p("oozing", "oozing", &[("oozing", 3600, 0)]),
     p("infested", "infested", &[("infested", 3600, 0)]),
 ];
+impl PotionDef {
+    /// Its registry id: `minecraft:<id>` for vanilla's, a mod's as declared.
+    pub fn key(&self) -> std::borrow::Cow<'static, str> {
+        if self.id.contains(':') {
+            self.id.into()
+        } else {
+            format!("minecraft:{}", self.id).into()
+        }
+    }
+}
+/// The potions content mods declare, registered after vanilla's.
+static MOD_POTIONS: OnceLock<Vec<PotionDef>> = OnceLock::new();
+/// Registers the content mods' potions in registry order: the `<ns>:<path>`
+/// id, the name suffix and the effects as (effect, duration ticks,
+/// amplifier), a vanilla effect by its path as in [`POTIONS`]. Set once per
+/// process, as [`register_mod_effects`]: false when it already was.
+pub fn register_mod_potions(
+    potions: impl IntoIterator<Item = (String, String, Vec<(String, i32, i32)>)>,
+) -> bool {
+    if MOD_POTIONS.get().is_some() {
+        return false;
+    }
+    let leak = |s: String| -> &'static str { Box::leak(s.into_boxed_str()) };
+    let defs: Vec<PotionDef> = potions
+        .into_iter()
+        .map(|(id, name, effects)| {
+            debug_assert!(id.contains(':'), "{id} has no namespace");
+            let effects: Vec<_> = effects
+                .into_iter()
+                .map(|(effect, duration, amplifier)| {
+                    let effect = match effect.strip_prefix("minecraft:") {
+                        Some(path) => path.to_owned(),
+                        None => effect,
+                    };
+                    (leak(effect), duration, amplifier)
+                })
+                .collect();
+            PotionDef {
+                id: leak(id),
+                name: leak(name),
+                effects: Box::leak(effects.into_boxed_slice()),
+            }
+        })
+        .collect();
+    MOD_POTIONS.set(defs).is_ok()
+}
+/// The content mods' potions, in registry order.
+pub fn mod_potions() -> &'static [PotionDef] {
+    MOD_POTIONS.get().map_or(&[], Vec::as_slice)
+}
+/// Every registered potion: vanilla's, then the content mods'.
+pub fn all_potions() -> impl Iterator<Item = &'static PotionDef> {
+    POTIONS.iter().chain(mod_potions())
+}
 pub fn potion(id: &str) -> Option<&'static PotionDef> {
-    let id = id.trim_start_matches("minecraft:");
-    POTIONS.iter().find(|p| p.id == id)
+    let short = id.trim_start_matches("minecraft:");
+    match POTIONS.iter().find(|p| p.id == short) {
+        Some(p) => Some(p),
+        None => mod_potion(id),
+    }
+}
+/// Out of line, as [`mod_effect`]: vanilla's lookups stay as they were.
+#[cold]
+#[inline(never)]
+fn mod_potion(id: &str) -> Option<&'static PotionDef> {
+    mod_potions().iter().find(|p| p.id == id)
 }
 /// `PotionContents.BASE_POTION_COLOR` (ARGB -13083194) as RGB.
 pub const BASE_POTION_COLOR: u32 = 0x385DC6;
@@ -398,5 +461,47 @@ mod tests {
         let ids: Vec<_> = all_effects().map(|e| e.id).collect();
         assert_eq!(ids.len(), EFFECTS.len() + 1);
         assert_eq!(ids.last(), Some(&"ruby:glow"));
+    }
+
+    /// The only test that registers potions: the registry is set once per process.
+    #[test]
+    fn mod_potions_follow_vanilla_once_registered() {
+        let effects = vec![
+            ("minecraft:speed".to_owned(), 1800, 1),
+            ("ruby:glow".to_owned(), 3600, 0),
+        ];
+        assert!(register_mod_potions([
+            ("ruby:base".to_owned(), "base".to_owned(), Vec::new()),
+            (
+                "ruby:fast".to_owned(),
+                "fast".to_owned(),
+                vec![("minecraft:speed".to_owned(), 600, 0)]
+            ),
+            ("ruby:swift".to_owned(), "swift".to_owned(), effects),
+        ]));
+        assert!(!register_mod_potions([(
+            "ruby:late".to_owned(),
+            "late".to_owned(),
+            Vec::new()
+        )]));
+        let swift = potion("ruby:swift").unwrap();
+        assert_eq!(swift.name, "swift");
+        assert_eq!(swift.effects, [("speed", 1800, 1), ("ruby:glow", 3600, 0)]);
+        assert_eq!(swift.key(), "ruby:swift");
+        assert_eq!(potion("water").unwrap().key(), "minecraft:water");
+        assert!(potion("swift").is_none() && potion("minecraft:swift").is_none());
+        assert!(potion("ruby:late").is_none());
+        assert_eq!(potion("minecraft:awkward").unwrap().id, "awkward");
+        let ids: Vec<_> = all_potions().map(|p| p.id).collect();
+        assert_eq!(
+            &ids[POTIONS.len()..],
+            ["ruby:base", "ruby:fast", "ruby:swift"]
+        );
+        // Its colour mixes its effects', as a vanilla potion's does.
+        assert_eq!(potion_color(Some("ruby:base")), BASE_POTION_COLOR);
+        assert_eq!(
+            potion_color(Some("ruby:fast")),
+            potion_color(Some("minecraft:swiftness"))
+        );
     }
 }
