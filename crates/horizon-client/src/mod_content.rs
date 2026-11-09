@@ -1484,7 +1484,7 @@ impl<'a> Plan<'a> {
                 }
             }
             "gameplay-facts.json" => states(doc, "states", false, true)?,
-            "creative-inventory.json" => self.creative_tabs(doc)?,
+            "creative-inventory.json" => self.creative_inventory(doc)?,
             "block-behaviours.json" => {
                 states(doc, "states", false, false)?;
                 let Some(J::Arr(blocks)) = doc.at("blocks") else {

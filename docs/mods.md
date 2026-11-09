@@ -361,7 +361,7 @@ which is the file's path when left out. A potion with no effects is a base, as v
 It is the potion `<id>:<name>`, after vanilla's (its network id follows theirs). Its bottle, splash and lingering bottles
 and tipped arrow take its name from the mod's `assets/<id>/lang/` (`item.minecraft.potion.effect.<name>`, and the same
 with `splash_potion`, `lingering_potion` and `tipped_arrow`), its effects and their colours' mix, and they give its
-effects. `/give` takes its id in `potion_contents`. A brewing stand
+effects. The creative inventory lists them after vanilla's, and `/give` takes its id in `potion_contents`. A brewing stand
 brews it from a `minecraft:brewing` recipe in the mod's `data/<id>/recipe/`, in vanilla's form (one recipe per bottle,
 as in vanilla's `recipe/brewing/`): 26.3 made brewing mixes recipes, so that is how a port writes NeoForge's
 `RegisterBrewingRecipesEvent`. Clients join a server only with the same mods' potions.
