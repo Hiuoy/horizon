@@ -56,9 +56,14 @@ const PARENTS: [(&str, &[&str]); 1] = [("ModConfigEvent", &["Loading", "Reloadin
 /// data, or `data_pack_files`). NeoForge's 26.1 primer: "Villager trades has
 /// now become a data-generated registry from its original map-based setup",
 /// in `trade_set` and `villager_trade`; 26.3's javadoc has neither event.
-const DATA: [(&str, &[&str]); 2] = [
+/// 26.3 made brewing mixes `minecraft:brewing` recipes (its jar has 280 in
+/// `recipe/brewing/` and no `PotionBrewing`), and 26.3's javadoc lists no
+/// `RegisterBrewingRecipesEvent` (its `event.brewing` package keeps only
+/// `PotionBrewEvent` and `PlayerBrewedPotionEvent`).
+const DATA: [(&str, &[&str]); 3] = [
     ("VillagerTradesEvent", &["trade_set", "villager_trade"]),
     ("WandererTradesEvent", &["trade_set", "villager_trade"]),
+    ("RegisterBrewingRecipesEvent", &["recipe"]),
 ];
 
 /// The catalog's NeoForge names: the hooks that are each name's

@@ -203,6 +203,16 @@ pub struct Brewing {
 /// The files right in `recipe/brewing/`, parsed, by id: taken from the whole
 /// recipe folder's read when another table holds it (the start loads them
 /// together), else read alone. A file that doesn't parse is left out.
+/// A recipe file's JSON when it is a `minecraft:brewing` recipe. Most recipe
+/// files aren't, so the bytes are searched before anything is parsed.
+fn brewing_recipe(bytes: &[u8]) -> Option<Value> {
+    const TYPE: &[u8] = b"minecraft:brewing";
+    if !bytes.windows(TYPE.len()).any(|w| w == TYPE) {
+        return None;
+    }
+    let v: Value = serde_json::from_slice(bytes).ok()?;
+    (v["type"] == "minecraft:brewing").then_some(v)
+}
 fn brewing_sources(root: &Path) -> Vec<(String, Value)> {
     let recipe = root.join("data/minecraft/recipe");
     let (folder, prefix) = match crate::json_folder::held(&recipe) {
@@ -237,18 +247,37 @@ impl Brewing {
             horizon_world::conditions::conditions_hold(v, &|id: &str| mods.iter().any(|m| m == id))
         };
         let mut sources: Vec<(String, Value)> = brewing_sources(root);
-        // The world's packs' brewing recipes over the game's own: the top
-        // pack's file for each id replaces it (`SimpleJsonResourceReloadListener`).
-        for (id, files) in overlay.kind("recipe") {
-            if !id.starts_with("minecraft:brewing/") {
-                continue;
-            }
-            let Ok(v) = serde_json::from_slice::<Value>(PackOverlay::top(files)) else {
+        // The content mods' brewing recipes, as `<ns>:<path>`: the recipe
+        // manager takes a `minecraft:brewing` recipe from any folder of any
+        // namespace, so a mod's mixes need not sit in `brewing/`.
+        for namespace in horizon_items::content_namespaces::namespaces(root) {
+            let dir = root.join(format!("data/{namespace}/recipe"));
+            let Ok(folder) = crate::json_folder::read(&dir) else {
                 continue;
             };
+            for f in &folder.files {
+                if let Some(v) = f.bytes().ok().and_then(brewing_recipe) {
+                    sources.push((format!("{namespace}:{}", f.name), v));
+                }
+            }
+        }
+        // The world's packs' brewing recipes over the game's own: the top
+        // pack's file for each id replaces it (`SimpleJsonResourceReloadListener`).
+        // A new id joins when it is a brewing recipe, wherever it sits.
+        for (id, files) in overlay.kind("recipe") {
+            let top = PackOverlay::top(files);
             match sources.iter_mut().find(|(n, _)| n == id) {
-                Some(slot) => slot.1 = v,
-                None => sources.push((id.to_owned(), v)),
+                Some(slot) => {
+                    let Ok(v) = serde_json::from_slice::<Value>(top) else {
+                        continue;
+                    };
+                    slot.1 = v;
+                }
+                None => {
+                    if let Some(v) = brewing_recipe(top) {
+                        sources.push((id.to_owned(), v));
+                    }
+                }
             }
         }
         // The gate answers the merged file, as the crafting loader's does:
@@ -439,6 +468,93 @@ pub fn brewing_fuel(items: &Items, stack: &ItemStack) -> Option<(Value, Value)> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A content mod's `minecraft:brewing` recipes load from any folder of its
+    /// namespace, and a world pack's from any id, so they brew its potions.
+    #[test]
+    fn a_mods_brewing_recipes_brew_its_potions() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "horizon-mod-brewing-{}-{nanos}",
+            std::process::id()
+        ));
+        let recipe = |input: &str, potion: &str, reagent: &str, output: &str| {
+            format!(
+                r#"{{"type":"minecraft:brewing","input":{{"item":"{input}","potion_contents":{{"potions":"{potion}"}}}},
+                "output":{{"components":{{"minecraft:potion_contents":{{"potion":"{output}"}}}},"id":"{input}"}},
+                "reagent":{{"item":"{reagent}"}}}}"#
+            )
+        };
+        let write = |path: &str, text: &str| {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(horizon_items::content_namespaces::MARKER, r#"["ruby"]"#);
+        let glow = recipe(
+            "minecraft:potion",
+            "minecraft:awkward",
+            "minecraft:glowstone_dust",
+            "ruby:glow",
+        );
+        write("data/ruby/recipe/brewing/glow.json", &glow);
+        let long = recipe(
+            "minecraft:potion",
+            "ruby:glow",
+            "minecraft:redstone",
+            "ruby:long/glow",
+        );
+        write("data/ruby/recipe/mixes/long_glow.json", &long);
+        write(
+            "data/ruby/recipe/gem.json",
+            r#"{"type":"minecraft:crafting_shapeless","ingredients":["minecraft:stone"],"result":{"id":"minecraft:stone"}}"#,
+        );
+        let fast = recipe(
+            "minecraft:potion",
+            "minecraft:awkward",
+            "minecraft:sugar",
+            "ruby:fast",
+        );
+        let files = [(
+            "recipe/pack:custom/fast".to_owned(),
+            vec![fast.into_bytes()],
+        )];
+        let items = Items::for_tests(Default::default());
+        let brewing = Brewing::load(&root, &items, &PackOverlay { files: &files });
+        std::fs::remove_dir_all(&root).unwrap();
+        let ids: Vec<_> = brewing.recipes.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "pack:custom/fast",
+                "ruby:brewing/glow",
+                "ruby:mixes/long_glow"
+            ]
+        );
+        let potion = |id: &str| ItemStack::new("minecraft:potion", 1).with_potion(id);
+        let brew = |input: &str, reagent: &str| {
+            let reagent = ItemStack::new(reagent, 1);
+            let out = &brewing.find(&potion(input), &reagent)?.output;
+            out.potion().map(str::to_owned)
+        };
+        assert_eq!(
+            brew("minecraft:awkward", "minecraft:glowstone_dust").as_deref(),
+            Some("ruby:glow")
+        );
+        assert_eq!(
+            brew("ruby:glow", "minecraft:redstone").as_deref(),
+            Some("ruby:long/glow")
+        );
+        assert_eq!(
+            brew("minecraft:awkward", "minecraft:sugar").as_deref(),
+            Some("ruby:fast")
+        );
+        assert!(brewing.is_reagent(&ItemStack::new("minecraft:glowstone_dust", 1)));
+    }
 
     #[test]
     fn stack_fuel_controls_brew_duration_and_consumption() {

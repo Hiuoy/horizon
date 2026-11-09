@@ -191,6 +191,9 @@ fn trade_events_are_answered_by_the_trade_registries() {
     );
     assert_eq!(c.status("VillagerTradesEvent"), data);
     assert_eq!(c.status("WandererTradesEvent"), data);
+    // 26.3's brewing mixes are recipes.
+    let recipe = (Status::Data(vec!["recipe".to_owned()]), None);
+    assert_eq!(c.status("RegisterBrewingRecipesEvent"), recipe);
     let mut mods = BTreeMap::new();
     mods.insert(
         "trader".to_owned(),

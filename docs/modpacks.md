@@ -413,7 +413,10 @@ Names NeoForge changed after 1.21.1 (`Capabilities.ItemHandler`, `Capabilities.E
 registries (NeoForge's 26.1 primer), and 26.3's NeoForge has neither event. A port writes each
 trade as a `villager_trade` file and adds it to the tag a set reads (`armorer/level_1`'s set takes
 `#minecraft:armorer/level_1`). Tags merge, so several mods can add to one level. The files come from
-the mod's own data or from `data_pack_files`. The report reads names only, never code: it says
+the mod's own data or from `data_pack_files`. `RegisterBrewingRecipesEvent` is data too: 26.3 made
+brewing mixes `minecraft:brewing` recipes, and 26.3's NeoForge has no such event. A port writes each
+`addMix` as one recipe per bottle in vanilla's form, in any folder of the mod's `data/<id>/recipe/`
+(vanilla's sit in `recipe/brewing/`). The report reads names only, never code: it says
 where a port starts, for a human to check.
 
 On ATM10's 498 jars (2026-11-05, 8 s), 416 of 497 mods listen to events or use capabilities: 6,616
