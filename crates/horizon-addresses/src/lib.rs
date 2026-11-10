@@ -5,6 +5,9 @@
 //! This is a Horizon-layer crate: the engine and the platform never depend on it. Platform code
 //! that talks to a service gets the address passed in from a Horizon crate.
 
+/// Horizon's website, as players are told it.
+pub const WEBSITE: &str = "playhorizon.dev";
+
 /// Horizon's official survival server (SMP), offered once at the top of the server list by the
 /// game and the launcher (`launcher/links.json` may name another). Its SRV record leads to the
 /// port.

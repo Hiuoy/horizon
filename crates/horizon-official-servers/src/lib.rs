@@ -1,5 +1,6 @@
 //! Horizon's own entries in the multiplayer list: the official server, added once at the top,
-//! and the withdrawn partner server, taken back out once.
+//! and the withdrawn partner server, taken back out once. Also what a Horizon server that only
+//! lets the Horizon client in tells another client.
 //!
 //! A Horizon crate (docs/layers.md): it plugs into the game through the platform's hooks
 //! ([`HOOKS`], when the game starts), which the official executable (`horizon-official`)
@@ -21,7 +22,20 @@ impl Hooks for OfficialServers {
     fn started(&self, game: &Started<'_>) {
         update(game.game_dir);
     }
+
+    /// A `horizon-clients-only` server sends other clients to the website.
+    fn clients_only_reason(&self) -> Option<&'static str> {
+        Some(CLIENTS_ONLY_REASON.as_str())
+    }
 }
+
+/// What a `horizon-clients-only` server tells a client that isn't Horizon.
+static CLIENTS_ONLY_REASON: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    format!(
+        "This server is for the Horizon client: {}",
+        horizon_addresses::WEBSITE
+    )
+});
 
 /// At the start of a player's game: the official server into the list in `game_dir` and the
 /// withdrawn partner server out of it, a failure only logged.

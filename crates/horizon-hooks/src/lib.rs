@@ -95,6 +95,14 @@ pub trait Hooks: Sync {
     /// What the player is doing, for a status shown outside the game (Discord's): called when it
     /// changes, not every frame. Splitscreen: the first player's only.
     fn activity(&self, _now: Activity) {}
+
+    /// What a server that only lets this game's own client in (`horizon-clients-only`) tells a
+    /// client it turns away. The first hook that answers is used; with none, the engine's own
+    /// text, which names no address. Asked once, on the game's thread, when a server builds its
+    /// configuration.
+    fn clients_only_reason(&self) -> Option<&'static str> {
+        None
+    }
 }
 
 /// What [`Hooks::client_started`] gets.
@@ -329,6 +337,11 @@ pub mod engine {
         }
     }
 
+    /// [`Hooks::clients_only_reason`]: the first registered hook's text.
+    pub fn clients_only_reason() -> Option<&'static str> {
+        all().iter().find_map(|hooks| hooks.clients_only_reason())
+    }
+
     /// [`Hooks::tunnel`]: the first registered hook's resolver.
     pub fn tunnel() -> Option<&'static dyn tunnel::Resolver> {
         all().iter().find_map(|hooks| hooks.tunnel())
@@ -396,6 +409,9 @@ mod tests {
             let alpha = draw.motion().head_yaw / 90.0;
             let spark = players::Particle::new([[0.0; 3]; 4], [[0.0; 2]; 4], alpha);
             draw.particles([0.0; 4], &[spark], players::Light::Full);
+        }
+        fn clients_only_reason(&self) -> Option<&'static str> {
+            Some("Recorder's clients only")
         }
         fn tick(&self, models: &mut dyn players::PlayerModels) {
             let mut ids = Vec::new();
@@ -548,6 +564,10 @@ mod tests {
         }
         engine::shutdown();
         assert!(engine::any());
+        assert_eq!(
+            engine::clients_only_reason(),
+            Some("Recorder's clients only")
+        );
         let mut atlas = Atlas::default();
         let model = |kind| players::PlayerModel::new(5, kind, Some(9), 0, false);
         // Before the frame put the sprite in: the decoration without its badge.
