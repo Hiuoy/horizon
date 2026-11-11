@@ -5,9 +5,6 @@
 //! This is a Horizon-layer crate: the engine and the platform never depend on it. Platform code
 //! that talks to a service gets the address passed in from a Horizon crate.
 
-/// Horizon's website, as players are told it.
-pub const WEBSITE: &str = "playhorizon.dev";
-
 /// Horizon's official survival server (SMP), offered once at the top of the server list by the
 /// game and the launcher (`launcher/links.json` may name another). Its SRV record leads to the
 /// port.
@@ -25,6 +22,10 @@ pub const WITHDRAWN_PARTNER_SERVER: &str = "afri-network.co.za";
 /// [`OFFICIAL_SERVER`] with the port its SRV record gives, for askers that don't look SRV up
 /// (the telemetry server's status checks).
 pub const OFFICIAL_SERVER_STATUS: &str = "play.playhorizon.dev:24454";
+
+/// Horizon's website, where the launcher is downloaded: the game started without its prepared
+/// files sends the player there.
+pub const WEBSITE: &str = "https://playhorizon.dev";
 
 /// The cosmetics service: cosmetics, emotes, "Show me as a Horizon player"
 /// (`HORIZON_COSMETICS_API` overrides it).

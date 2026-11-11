@@ -1,6 +1,7 @@
 //! Horizon's own entries in the multiplayer list: the official server, added once at the top,
 //! and the withdrawn partner server, taken back out once. Also what a Horizon server that only
-//! lets the Horizon client in tells another client.
+//! lets the Horizon client in tells another client. And where the game started without its
+//! prepared files sends the player: Horizon's launcher, on its website ([`GET_THE_GAME`]).
 //!
 //! A Horizon crate (docs/layers.md): it plugs into the game through the platform's hooks
 //! ([`HOOKS`], when the game starts), which the official executable (`horizon-official`)
@@ -8,7 +9,7 @@
 //! executable adds no server. Its addresses are in `horizon-addresses`.
 #![forbid(unsafe_code)]
 
-use horizon_platform::hooks::{Hooks, Started};
+use horizon_platform::hooks::{GetTheGame, Hooks, Started};
 use horizon_platform::servers::{self, ServerEntry};
 use std::path::Path;
 
@@ -27,15 +28,32 @@ impl Hooks for OfficialServers {
     fn clients_only_reason(&self) -> Option<&'static str> {
         Some(CLIENTS_ONLY_REASON.as_str())
     }
+
+    fn get_the_game(&self) -> Option<GetTheGame> {
+        Some(GET_THE_GAME)
+    }
 }
 
 /// What a `horizon-clients-only` server tells a client that isn't Horizon.
 static CLIENTS_ONLY_REASON: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
     format!(
         "This server is for the Horizon client: {}",
-        horizon_addresses::WEBSITE
+        horizon_addresses::WEBSITE.trim_start_matches("https://")
     )
 });
+
+/// The game started by hand without its prepared files: start it from the launcher, downloaded
+/// from Horizon's website.
+pub const GET_THE_GAME: GetTheGame = GetTheGame {
+    address: horizon_addresses::WEBSITE,
+    title: "horizon.get_the_game.title",
+    paragraphs: &[
+        "horizon.get_the_game.about",
+        "horizon.get_the_game.minecraft",
+        "horizon.get_the_game.download",
+    ],
+    button: "horizon.get_the_game.button",
+};
 
 /// At the start of a player's game: the official server into the list in `game_dir` and the
 /// withdrawn partner server out of it, a failure only logged.
