@@ -555,7 +555,7 @@ fn llama_variant_recipe_codec_preserves_names_defaults_removal_and_strictness() 
         assert!(error.starts_with("component minecraft:llama/variant:"));
         let recipes = compile(&items, patch, false);
         assert!(recipes.crafting.is_empty());
-        assert!(recipes.by_type.values().all(Vec::is_empty));
+        assert!(recipes.by_type.values().all(|recipes| recipes.is_empty()));
     }
     // Synthetic pack prototype exercises defaults without inventing a vanilla one.
     let mut prototype_items = Items::empty();
