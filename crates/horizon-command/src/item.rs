@@ -33,6 +33,7 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:custom_name",
     "minecraft:item_name",
     "minecraft:item_model",
+    "minecraft:container_loot",
     "minecraft:block_entity_data",
 ];
 
@@ -45,6 +46,9 @@ pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Resul
     }
     if id == "minecraft:item_model" {
         return item_model(value);
+    }
+    if id == "minecraft:container_loot" {
+        return container_loot(value);
     }
     decode_component(id, value, reg)?;
     if id == "minecraft:block_entity_data" {
@@ -122,6 +126,7 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
         "minecraft:enchantments" | "minecraft:stored_enchantments" => enchantment_map(t, reg),
         "minecraft:custom_name" | "minecraft:item_name" => super::component::decode(t),
         "minecraft:item_model" => item_model(t).map(|_| ()),
+        "minecraft:container_loot" => container_loot(t).map(|_| ()),
         // TypedEntityData.codec: the type is the compound's id.
         "minecraft:block_entity_data" => match t {
             Tag::Compound(c) => match c.get(&"id".into()) {
@@ -147,6 +152,16 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
         },
         _ => Ok(()),
     }
+}
+
+/// `SeededContainerLoot.CODEC`: a resource key (not a registry lookup) and a long.
+fn container_loot(value: &Tag) -> Result<Tag, String> {
+    let (table, seed) =
+        horizon_items::item_data::ingredient_components::container_loot_fields(value)?;
+    Ok(Tag::compound([
+        ("loot_table", item_model(table)?),
+        ("seed", Tag::Long(seed)),
+    ]))
 }
 
 /// `DataComponents.ITEM_MODEL`: `Identifier.CODEC`, without a resource lookup.

@@ -340,3 +340,229 @@ fn item_model_component_literals_decode_validate_and_match() {
         );
     }
 }
+
+#[test]
+fn container_loot_component_recipe_decodes_validates_and_matches() {
+    use serde_json::json;
+    let mut items = Items::empty();
+    items.component_defaults = std::sync::Arc::new(std::collections::HashMap::from([(
+        "minecraft:stick".into(),
+        crate::json_nbt::json_to_compound(
+            json!({"minecraft:container_loot":{"loot_table":"fixture:unregistered"}})
+                .as_object()
+                .unwrap(),
+        )
+        .unwrap(),
+    )]));
+    let load = load();
+    let context = load.loop_context(LoopSide::Server, []);
+    let root = tempfile::tempdir().unwrap();
+    let ingredient_json = |payload: serde_json::Value, strict| {
+        json!({"type":"neoforge:components","items":"minecraft:stick",
+            "components":{"minecraft:container_loot":payload},"strict":strict})
+    };
+    let recipe_json = |ingredient: serde_json::Value| {
+        json!({"type":"minecraft:crafting_shapeless","ingredients":[ingredient],
+            "result":{"id":"minecraft:diamond"}})
+    };
+    let recipes = |ingredient: serde_json::Value| {
+        crate::crafting::Recipes::from_sources(
+            root.path(),
+            &items,
+            &horizon_world::loot::PackOverlay::NONE,
+            vec![
+                ("fixture:loot".into(), recipe_json(ingredient)),
+                (
+                    "fixture:control".into(),
+                    recipe_json(json!("minecraft:stone")),
+                ),
+            ],
+            &load,
+        )
+        .unwrap()
+    };
+    for (payload, seed, table) in [
+        (
+            json!({"loot_table":"fixture:unregistered"}),
+            0_i64,
+            "fixture:unregistered",
+        ),
+        (
+            json!({"loot_table":"unregistered","seed":0,"ignored":[1]}),
+            0,
+            "minecraft:unregistered",
+        ),
+        (
+            json!({"loot_table":":unregistered","seed":-2.75}),
+            -2,
+            "minecraft:unregistered",
+        ),
+        (
+            json!({"loot_table":"fixture:unregistered","seed":i64::MAX}),
+            i64::MAX,
+            "fixture:unregistered",
+        ),
+        (
+            json!({"loot_table":"fixture:unregistered","seed":i64::MIN}),
+            i64::MIN,
+            "fixture:unregistered",
+        ),
+        (json!({"loot_table":""}), 0, "minecraft:"),
+    ] {
+        for strict in [false, true] {
+            let source = ingredient_json(payload.clone(), strict);
+            let ingredient = Ingredient::parse(&source, &items).unwrap();
+            let loaded = recipes(source);
+            let shown = ingredient.shown.as_ref().unwrap()[0].data().unwrap();
+            assert_eq!(
+                shown.other("minecraft:container_loot"),
+                Some(&Tag::compound([
+                    ("loot_table", Tag::String(table.into())),
+                    ("seed", Tag::Long(seed)),
+                ]))
+            );
+            let mut stack = ItemStack::new("minecraft:stick", 1);
+            stack.data_mut().set_loot_component(
+                "minecraft:container_loot",
+                &Some(horizon_core::json_nbt::json_to_tag(&payload).unwrap()),
+            );
+            assert!(loaded.recipe_matches(&context, "fixture:loot", &[Some(stack.clone())], 1));
+            let (_, allocations) = horizon_threads::allocation_probe::measure(|| {
+                assert!(ingredient.test_in(&context, &stack));
+            });
+            assert_eq!(allocations.calls, 0, "{allocations:?}");
+            stack.data_mut().set_loot_component(
+                "minecraft:container_loot",
+                &Some(Tag::compound([
+                    ("loot_table", Tag::String(table.into())),
+                    ("seed", Tag::Long(seed.wrapping_add(1))),
+                ])),
+            );
+            assert!(!loaded.recipe_matches(&context, "fixture:loot", &[Some(stack.clone())], 1));
+            stack.data_mut().set_loot_component(
+                "minecraft:container_loot",
+                &Some(Tag::compound([(
+                    "loot_table",
+                    Tag::String("fixture:other".into()),
+                )])),
+            );
+            assert!(!ingredient.test_in(&context, &stack));
+        }
+    }
+    let source = ingredient_json(json!({"loot_table":"fixture:unregistered","seed":0}), false);
+    let ingredient = Ingredient::parse(&source, &items).unwrap();
+    let loaded = recipes(source);
+    let mut stack = ItemStack::new("minecraft:stick", 1);
+    assert!(loaded.recipe_matches(&context, "fixture:loot", &[Some(stack.clone())], 1));
+    stack
+        .data_mut()
+        .set_loot_component("minecraft:custom_data", &Some(Tag::Int(1)));
+    assert!(ingredient.test_in(&context, &stack));
+    let strict = recipes(ingredient_json(
+        json!({"loot_table":"fixture:unregistered"}),
+        true,
+    ));
+    assert!(!strict.recipe_matches(&context, "fixture:loot", &[Some(stack.clone())], 1));
+    stack
+        .data_mut()
+        .set_loot_component("minecraft:custom_data", &None);
+    stack
+        .data_mut()
+        .set_loot_component("minecraft:container_loot", &None);
+    stack.data_mut().set_loot_component(
+        "!minecraft:container_loot",
+        &Some(Tag::compound([] as [(&str, Tag); 0])),
+    );
+    assert!(!loaded.recipe_matches(&context, "fixture:loot", &[Some(stack.clone())], 1));
+    let removed = recipes(
+        json!({"type":"neoforge:components","items":"minecraft:stick",
+        "components":{"!minecraft:container_loot":{}}}),
+    );
+    assert!(removed.recipe_matches(&context, "fixture:loot", &[Some(stack)], 1));
+    assert!(!removed.recipe_matches(
+        &context,
+        "fixture:loot",
+        &[Some(ItemStack::new("minecraft:stick", 1))],
+        1
+    ));
+
+    for payload in [
+        json!({}),
+        json!("fixture:unregistered"),
+        json!([]),
+        json!({"loot_table":1}),
+        json!({"loot_table":{"type":"minecraft:empty"}}),
+        json!({"loot_table":"Bad:table"}),
+        json!({"loot_table":"..:table"}),
+        json!({"loot_table":"a:b:c"}),
+        json!({"loot_table":"bad path"}),
+        json!({"loot_table":"fixture:unregistered","seed":"0"}),
+        json!({"loot_table":"fixture:unregistered","seed":{}}),
+        json!({"loot_table":"fixture:unregistered","seed":null}),
+    ] {
+        let source = ingredient_json(payload, false);
+        assert!(Ingredient::parse(&source, &items).is_none());
+        let rule = IngredientRule::Components {
+            patch: crate::json_nbt::json_to_compound(source["components"].as_object().unwrap())
+                .unwrap(),
+            removed: Vec::new(),
+            strict: false,
+        };
+        let error = components::validate(&rule, &items).unwrap_err();
+        assert!(
+            error.contains("component minecraft:container_loot:"),
+            "{error}"
+        );
+        let loaded = recipes(source);
+        assert!(loaded.recipe("fixture:loot").is_none());
+        assert!(!loaded.recipe_matches(
+            &context,
+            "fixture:loot",
+            &[Some(ItemStack::new("minecraft:stick", 1))],
+            1
+        ));
+        assert!(loaded.recipe_matches(
+            &context,
+            "fixture:control",
+            &[Some(ItemStack::new("minecraft:stone", 1))],
+            1
+        ));
+    }
+    for (raw, expected) in [
+        (Tag::Byte(-1), -1),
+        (Tag::Short(2), 2),
+        (Tag::Int(3), 3),
+        (Tag::Long(i64::MIN), i64::MIN),
+        (Tag::Float((-0.0_f32).to_bits()), 0),
+        (Tag::Double(f64::NAN.to_bits()), 0),
+        (Tag::Double(f64::INFINITY.to_bits()), i64::MAX),
+        (Tag::Double(f64::NEG_INFINITY.to_bits()), i64::MIN),
+        (Tag::Double((-2.75_f64).to_bits()), -2),
+    ] {
+        let value = Tag::compound([
+            ("loot_table", Tag::String(":unregistered".into())),
+            ("seed", raw),
+        ]);
+        let decoded = horizon_command::item::decoded_component_value(
+            "minecraft:container_loot",
+            &value,
+            &items.component_registry,
+        )
+        .unwrap();
+        assert_eq!(decoded.get("seed"), Some(&Tag::Long(expected)));
+    }
+    for units in [vec![0xd800], vec![0xdc00], vec![0xd83d, 0xde00]] {
+        let value = Tag::compound([(
+            "loot_table",
+            Tag::String(horizon_core::nbt::JavaString(units)),
+        )]);
+        assert!(
+            horizon_command::item::decoded_component_value(
+                "minecraft:container_loot",
+                &value,
+                &items.component_registry,
+            )
+            .is_err()
+        );
+    }
+}

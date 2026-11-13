@@ -73,6 +73,20 @@ pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
             a.data().and_then(|d| d.other(id)),
             b.data().and_then(|d| d.other(id)),
         ),
+        "minecraft:container_loot" => {
+            fn fields(stack: &ItemStack) -> Option<(&Tag, i64)> {
+                stack
+                    .data()
+                    .and_then(|d| d.other("minecraft:container_loot"))
+                    .and_then(|tag| container_loot_fields(tag).ok())
+            }
+            match (fields(a), fields(b)) {
+                (Some((table_a, seed_a)), Some((table_b, seed_b))) => {
+                    seed_a == seed_b && identifier_equal(Some(table_a), Some(table_b))
+                }
+                _ => false,
+            }
+        }
         "minecraft:rarity" => rarity(a) == rarity(b),
         _ => stored_component_equal(id, a, b),
     }
@@ -231,6 +245,26 @@ fn rarity(stack: &ItemStack) -> Option<u8> {
         Some(_) => None,
         None => data.ominous_banner.then_some(1),
     }
+}
+
+/// Borrow `SeededContainerLoot.CODEC`'s record fields, ignoring unknown fields.
+/// The caller validates/normalizes the required `Identifier.CODEC` string at load;
+/// live comparisons use `identifier_equal` without allocating.
+pub fn container_loot_fields(value: &Tag) -> Result<(&Tag, i64), &'static str> {
+    if !matches!(value, Tag::Compound(_)) {
+        return Err("Not a map");
+    }
+    let table = value.get("loot_table").ok_or("Missing loot_table")?;
+    if !matches!(table, Tag::String(_)) {
+        return Err("loot_table: Not a string");
+    }
+    let seed = match value.get("seed") {
+        None => 0,
+        Some(seed) => horizon_world::datafix::dynamic::as_number(seed)
+            .ok_or("seed: Not a number")?
+            .long_value(),
+    };
+    Ok((table, seed))
 }
 
 /// `Identifier.bySeparator`/`equals`: default namespaces, borrowing Java UTF-16.

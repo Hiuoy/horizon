@@ -54,9 +54,12 @@ Native registrations retain their persistent NBT validation contract.
 
 The shared decoder currently covers `damage`, `repair_cost`, `max_damage`,
 `max_stack_size`, `rarity`, `enchantments`, `stored_enchantments`, `custom_name`,
-`item_name`, `item_model`, and `block_entity_data` in the `minecraft` namespace.
+`item_name`, `item_model`, `container_loot`, and `block_entity_data` in the `minecraft` namespace.
+`container_loot` requires a `loot_table` resource identifier, without requiring a
+registered table, and accepts an optional numeric `seed` converted to a Java long
+(default 0). Unknown record fields are ignored; malformed present seeds are rejected.
 `item_model` accepts valid resource identifiers without requiring an existing model;
-bare names and an empty namespace normalize to `minecraft`. The other 111 registered
+bare names and an empty namespace normalize to `minecraft` for both. The other 110 registered
 built-ins use stored-value matching while their shared decoders are added
 incrementally in **#3875**. Their absence is not a load refusal.
 
