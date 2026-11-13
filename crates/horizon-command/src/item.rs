@@ -33,6 +33,7 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:custom_name",
     "minecraft:item_name",
     "minecraft:item_model",
+    "minecraft:lodestone_tracker",
     "minecraft:block_entity_data",
 ];
 
@@ -45,6 +46,9 @@ pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Resul
     }
     if id == "minecraft:item_model" {
         return item_model(value);
+    }
+    if id == "minecraft:lodestone_tracker" {
+        return lodestone_tracker(value);
     }
     decode_component(id, value, reg)?;
     if id == "minecraft:block_entity_data" {
@@ -122,6 +126,7 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
         "minecraft:enchantments" | "minecraft:stored_enchantments" => enchantment_map(t, reg),
         "minecraft:custom_name" | "minecraft:item_name" => super::component::decode(t),
         "minecraft:item_model" => item_model(t).map(|_| ()),
+        "minecraft:lodestone_tracker" => lodestone_tracker(t).map(|_| ()),
         // TypedEntityData.codec: the type is the compound's id.
         "minecraft:block_entity_data" => match t {
             Tag::Compound(c) => match c.get(&"id".into()) {
@@ -159,6 +164,24 @@ fn item_model(value: &Tag) -> Result<Tag, String> {
     let id = horizon_core::identifier::Identifier::parse(&text)
         .map_err(|error| format!("Not a valid resource location: {text} {error}"))?;
     Ok(Tag::String(id.to_string().as_str().into()))
+}
+
+/// `LodestoneTracker.CODEC`: optional GlobalPos and a strict optional boolean.
+fn lodestone_tracker(value: &Tag) -> Result<Tag, String> {
+    let tracker = horizon_items::item_data::ingredient_components::lodestone_tracker(value)?;
+    let mut fields = Compound::new();
+    if let Some((dimension, pos)) = tracker.target {
+        // ResourceKey.codec uses Identifier.CODEC, not a dimension registry lookup.
+        let target = Tag::compound([
+            ("dimension", item_model(dimension)?),
+            ("pos", Tag::IntArray(pos.to_vec())),
+        ]);
+        fields.insert("target".into(), target);
+    }
+    if !tracker.tracked {
+        fields.insert("tracked".into(), Tag::Byte(0));
+    }
+    Ok(Tag::Compound(fields))
 }
 /// `ItemEnchantments.CODEC`: registry keys and boxed-number levels in 1..=255.
 /// `UnboundedMapCodec` reports failed entries; commands do not retain its partial map.

@@ -54,11 +54,17 @@ Native registrations retain their persistent NBT validation contract.
 
 The shared decoder currently covers `damage`, `repair_cost`, `max_damage`,
 `max_stack_size`, `rarity`, `enchantments`, `stored_enchantments`, `custom_name`,
-`item_name`, `item_model`, and `block_entity_data` in the `minecraft` namespace.
-`item_model` accepts valid resource identifiers without requiring an existing model;
-bare names and an empty namespace normalize to `minecraft`. The other 111 registered
-built-ins use stored-value matching while their shared decoders are added
-incrementally in **#3875**. Their absence is not a load refusal.
+`item_name`, `item_model`, `lodestone_tracker`, and `block_entity_data` in the
+`minecraft` namespace. `item_model` accepts valid resource identifiers without
+requiring an existing model; bare names and an empty namespace normalize to
+`minecraft`. `lodestone_tracker` accepts an optional `target` with a resource-key
+`dimension` (including pack-defined dimensions) and exactly three numeric `pos`
+coordinates, converted using Java integer rules without world-coordinate bounds.
+Its numeric `tracked` boolean defaults to true only when absent. Unknown record
+fields are ignored; malformed present optional fields are rejected. Matching
+normalizes dimension identifiers, numeric representations and the tracked default.
+The other 110 registered built-ins use stored-value matching while their shared
+decoders are added incrementally in **#3875**. Their absence is not a load refusal.
 
 Component ingredient displays contain the patch, including removals. Difference
 lists retain the base list and remove only items whose default stack passes the
