@@ -54,9 +54,14 @@ Native registrations retain their persistent NBT validation contract.
 
 The shared decoder currently covers `damage`, `repair_cost`, `max_damage`,
 `max_stack_size`, `rarity`, `enchantments`, `stored_enchantments`, `custom_name`,
-`item_name`, `item_model`, and `block_entity_data` in the `minecraft` namespace.
+`item_name`, `item_model`, `use_effects`, and `block_entity_data` in the `minecraft` namespace.
+`use_effects` accepts an object with optional `can_sprint` (false),
+`interact_vibrations` (true), and `speed_multiplier` (0.2). Numeric booleans use
+NBT truth values; speed converts to a float in [0, 1], rejecting negative zero
+and NaN. Invalid present fields fail rather than using defaults; unknown fields
+are ignored. Equality compares the decoded fields, including omitted defaults.
 `item_model` accepts valid resource identifiers without requiring an existing model;
-bare names and an empty namespace normalize to `minecraft`. The other 111 registered
+bare names and an empty namespace normalize to `minecraft`. The other 110 registered
 built-ins use stored-value matching while their shared decoders are added
 incrementally in **#3875**. Their absence is not a load refusal.
 

@@ -33,6 +33,7 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:custom_name",
     "minecraft:item_name",
     "minecraft:item_model",
+    "minecraft:use_effects",
     "minecraft:block_entity_data",
 ];
 
@@ -45,6 +46,23 @@ pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Resul
     }
     if id == "minecraft:item_model" {
         return item_model(value);
+    }
+    if id == "minecraft:use_effects" {
+        let (can_sprint, interact_vibrations, speed) =
+            horizon_items::item_data::ingredient_components::use_effects(value)
+                .map_err(str::to_owned)?;
+        return Ok(Tag::Compound(
+            [
+                ("can_sprint".into(), Tag::Byte(i8::from(can_sprint))),
+                (
+                    "interact_vibrations".into(),
+                    Tag::Byte(i8::from(interact_vibrations)),
+                ),
+                ("speed_multiplier".into(), Tag::Float(speed)),
+            ]
+            .into_iter()
+            .collect(),
+        ));
     }
     decode_component(id, value, reg)?;
     if id == "minecraft:block_entity_data" {
@@ -122,6 +140,9 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
         "minecraft:enchantments" | "minecraft:stored_enchantments" => enchantment_map(t, reg),
         "minecraft:custom_name" | "minecraft:item_name" => super::component::decode(t),
         "minecraft:item_model" => item_model(t).map(|_| ()),
+        "minecraft:use_effects" => horizon_items::item_data::ingredient_components::use_effects(t)
+            .map(|_| ())
+            .map_err(str::to_owned),
         // TypedEntityData.codec: the type is the compound's id.
         "minecraft:block_entity_data" => match t {
             Tag::Compound(c) => match c.get(&"id".into()) {
