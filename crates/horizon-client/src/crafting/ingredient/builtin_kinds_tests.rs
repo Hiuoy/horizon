@@ -576,7 +576,7 @@ fn rabbit_variant_recipe_codec_presence_and_borrowed_matching() {
         );
         let recipes = compile(&items, patch, false);
         assert!(recipes.crafting.is_empty());
-        assert!(recipes.by_type.values().all(Vec::is_empty));
+        assert!(recipes.by_type.values().all(|recipes| recipes.is_empty()));
     }
     let absent = compile(
         &items,
