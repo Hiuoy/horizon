@@ -54,10 +54,13 @@ Native registrations retain their persistent NBT validation contract.
 
 The shared decoder currently covers `damage`, `repair_cost`, `max_damage`,
 `max_stack_size`, `rarity`, `enchantments`, `stored_enchantments`, `custom_name`,
-`item_name`, `block_entity_data`, and `fox/variant` in the `minecraft` namespace.
+`item_name`, `block_entity_data`, `fox/variant`, and `horse/variant` in the `minecraft` namespace.
 The `fox/variant` persistent codec accepts only the exact strings `"red"` and
 `"snow"`; numeric network ids, case variants and namespaced values are rejected.
-The other 111 registered built-ins use stored-value matching while their shared
+The `horse/variant` codec accepts only `"white"`, `"creamy"`, `"chestnut"`,
+`"brown"`, `"black"`, `"gray"`, and `"dark_brown"`, not numeric network ids.
+Horse spawn eggs have no default `horse/variant` component.
+The other 110 registered built-ins use stored-value matching while their shared
 decoders are added incrementally in **#3875**. Their absence is not a load refusal.
 
 Component ingredient displays contain the patch, including removals. Difference

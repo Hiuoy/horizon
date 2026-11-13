@@ -34,6 +34,7 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:item_name",
     "minecraft:block_entity_data",
     "minecraft:fox/variant",
+    "minecraft:horse/variant",
 ];
 
 /// Validate and decode a component into the value representation shared with stacks.
@@ -108,6 +109,19 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
         "minecraft:rarity" => string_enum(t, &["common", "uncommon", "rare", "epic"]),
         // Fox.Variant.CODEC uses StringRepresentable names under ordinary NbtOps.
         "minecraft:fox/variant" => string_enum(t, &["red", "snow"]),
+        // equine.Variant.CODEC uses StringRepresentable names under ordinary NbtOps.
+        "minecraft:horse/variant" => string_enum(
+            t,
+            &[
+                "white",
+                "creamy",
+                "chestnut",
+                "brown",
+                "black",
+                "gray",
+                "dark_brown",
+            ],
+        ),
         "minecraft:enchantments" | "minecraft:stored_enchantments" => enchantment_map(t, reg),
         "minecraft:custom_name" | "minecraft:item_name" => super::component::decode(t),
         // TypedEntityData.codec: the type is the compound's id.
