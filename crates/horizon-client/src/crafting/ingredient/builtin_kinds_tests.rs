@@ -706,6 +706,6 @@ fn horse_variant_invalid_codec_payloads_omit_whole_recipes() {
         let recipes = horse_variant_recipes(&items, patch, false);
         assert!(recipes.crafting.is_empty());
         assert!(recipes.cooking.is_empty());
-        assert!(recipes.by_type.values().all(Vec::is_empty));
+        assert!(recipes.by_type.values().all(|recipes| recipes.is_empty()));
     }
 }
