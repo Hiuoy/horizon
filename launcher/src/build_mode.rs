@@ -624,7 +624,7 @@ impl Launcher {
                 "information-circle",
                 pal.warn,
                 trf("{mod} didn't build", &[("mod", mod_id)]).into(),
-                native_mods::fit::did_not_build(mod_id),
+                native_mods::fit::did_not_build_pending(mod_id),
             )
         } else if state == State::UpToDate {
             (

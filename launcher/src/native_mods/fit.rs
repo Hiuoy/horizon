@@ -359,6 +359,15 @@ pub fn did_not_build(name: &str) -> String {
     )
 }
 
+/// The mod's menu while the stop for worlds saved with it is on screen: nothing is switched off
+/// until the player chooses.
+pub fn did_not_build_pending(name: &str) -> String {
+    trf(
+        "{mod} looked compatible with this game but didn't build. It stays on until you choose below; this is for {mod}'s author to fix.",
+        &[("mod", name)],
+    )
+}
+
 /// What is said when a mod the build can't use was saved into worlds: the worlds named, and
 /// that opening them without the mod removes its content for good. `build` is the build the
 /// mod doesn't fit.
