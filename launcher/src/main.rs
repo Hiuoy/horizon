@@ -1295,7 +1295,7 @@ impl Launcher {
                             self.request_native_build_consent();
                         }
                         if let native_mods::Failed::Worlds(stake) = &e {
-                            self.native_worlds = Some(stake.clone());
+                            self.native_worlds = Some((**stake).clone());
                         }
                         self.native_error = Some(String::from(e));
                     }

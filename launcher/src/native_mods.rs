@@ -1533,7 +1533,7 @@ pub enum Failed {
     Nothing,
     /// Mods this build can't use were saved into worlds: the player chooses (stay, or back the
     /// worlds up and build without them).
-    Worlds(AtStake),
+    Worlds(Box<AtStake>),
     Other(String),
 }
 
@@ -1592,6 +1592,8 @@ pub struct AtStake {
     pub text: String,
     /// The worlds' names.
     pub worlds: Vec<String>,
+    /// The mods among them that looked compatible and didn't build.
+    pub unbuilt: Vec<String>,
     /// Where backups go.
     pub backups: PathBuf,
     /// The build the instance plays now, as people read it: "Stay on" it is the default.
@@ -1674,16 +1676,21 @@ fn guard_worlds(
             })
             .collect::<Vec<_>>()
             .join("\n\n");
-        return Err(Failed::Worlds(AtStake {
+        return Err(Failed::Worlds(Box::new(AtStake {
             text,
             worlds: at_stake
                 .iter()
                 .map(|(world, _)| world.name.clone())
                 .collect(),
+            unbuilt: left
+                .iter()
+                .filter(|l| matches!(l.why, isolate::Why::DidNotBuild))
+                .map(|l| l.id.clone())
+                .collect(),
             backups: home.join("backups"),
             stay: String::new(),
             base: String::new(),
-        }));
+        })));
     }
     for (world, _) in &at_stake {
         let made = crate::worlds::backup(home, world).map_err(|error| {
@@ -2256,11 +2263,11 @@ pub fn build(
         )
         .map_err(|failed| match failed {
             // "Stay" keeps the build the instance plays now.
-            Failed::Worlds(stake) => Failed::Worlds(AtStake {
+            Failed::Worlds(stake) => Failed::Worlds(Box::new(AtStake {
                 stay: playing(instance),
                 base: base.to_owned(),
-                ..stake
-            }),
+                ..*stake
+            })),
             other => other,
         })?;
         check_cancelled()?;

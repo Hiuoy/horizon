@@ -209,7 +209,7 @@ impl Launcher {
         let take = button(
             "native-update-take",
             if back_up {
-                native_mods::fit::back_up_and_update()
+                native_mods::fit::back_up_and_update(check.worlds.len())
             } else {
                 native_mods::fit::update()
             },
@@ -431,7 +431,7 @@ impl Launcher {
                     .child(
                         button(
                             "native-worlds-back-up",
-                            native_mods::fit::back_up_and_build(),
+                            native_mods::fit::back_up_and_build(stake.worlds.len()),
                             Kind::Secondary,
                             &t,
                         )
@@ -612,6 +612,18 @@ impl Launcher {
                 pal.muted,
                 tr("Another build is running").into(),
                 tr("This instance's build waits until it finishes.").to_string(),
+            )
+        } else if self
+            .native_worlds
+            .as_ref()
+            .is_some_and(|stake| stake.unbuilt.iter().any(|id| id == mod_id))
+        {
+            // The stop on screen is about this mod: its fit was only a prediction.
+            (
+                "information-circle",
+                pal.warn,
+                trf("{mod} didn't build", &[("mod", mod_id)]).into(),
+                native_mods::fit::did_not_build(mod_id),
             )
         } else if state == State::UpToDate {
             (

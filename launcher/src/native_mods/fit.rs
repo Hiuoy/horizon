@@ -200,7 +200,7 @@ pub fn line(name: &str, verdict: &Verdict, build: &str) -> String {
     match verdict {
         Verdict::MadeFor => trf("Made for this game ({build}).", &[("build", build)]),
         Verdict::Fits { made_for } => trf(
-            "Made for {made_for}. Fits this game ({build}).",
+            "Made for {made_for}. Fits this game: {build}.",
             &[("made_for", &made(made_for)), ("build", build)],
         ),
         Verdict::Exact { made_for, why } if *why == "internals" => trf(
@@ -264,7 +264,7 @@ pub fn headline(name: &str, verdict: &Verdict) -> String {
 /// mod's menu on the Mods page has Turn off).
 pub fn actions(name: &str) -> String {
     trf(
-        "The game is built without {mod}, which stays installed. Ask its author for an update made for this game.",
+        "The game will be built without {mod}, which stays installed. Ask its author for an update made for this game.",
         &[("mod", name)],
     )
 }
@@ -312,7 +312,7 @@ pub fn update_summary(build: &str, total: usize, off: &[(String, String)]) -> St
         .iter()
         .map(|(name, why)| {
             trf(
-                "{mod} does not: {why}. It will be switched off until it is updated.",
+                "{mod} does not: {why}. It will be switched off until its author makes a version that fits.",
                 &[("mod", name), ("why", why)],
             )
         })
@@ -405,13 +405,19 @@ pub fn stay(current: &str) -> String {
 }
 
 /// The other choice, said on its button.
-pub fn back_up_and_update() -> &'static str {
-    tr("Back up these worlds and update")
+pub fn back_up_and_update(worlds: usize) -> &'static str {
+    match worlds {
+        1 => tr("Back up this world and update"),
+        _ => tr("Back up these worlds and update"),
+    }
 }
 
 /// [`back_up_and_update`] on the Build panel, where nothing is being updated.
-pub fn back_up_and_build() -> &'static str {
-    tr("Back up these worlds and build without what doesn't fit")
+pub fn back_up_and_build(worlds: usize) -> &'static str {
+    match worlds {
+        1 => tr("Back up this world and build without what doesn't fit"),
+        _ => tr("Back up these worlds and build without what doesn't fit"),
+    }
 }
 
 #[cfg(test)]
