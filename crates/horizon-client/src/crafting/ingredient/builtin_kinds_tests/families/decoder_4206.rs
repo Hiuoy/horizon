@@ -190,9 +190,10 @@ fn damage_resistant_component_recipes_use_loaded_holder_sets() {
     stack
         .data_mut()
         .set_loot_component("minecraft:damage_resistant", &None);
-    stack
-        .data_mut()
-        .set_loot_component("!minecraft:damage_resistant", &None);
+    stack.data_mut().set_loot_component(
+        "!minecraft:damage_resistant",
+        &Some(Tag::Compound(Default::default())),
+    );
     assert!(
         absent
             .cook(&context, "minecraft:smelting", &stack)

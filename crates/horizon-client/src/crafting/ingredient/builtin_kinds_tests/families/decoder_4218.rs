@@ -178,8 +178,10 @@ fn horse_variant_recipe_defaults_removal_and_strictness_preserve_presence() {
     egg.data_mut().set_other("minecraft:custom_data", None);
     egg.data_mut()
         .set_loot_component("minecraft:horse/variant", &None);
-    egg.data_mut()
-        .set_loot_component("!minecraft:horse/variant", &None);
+    egg.data_mut().set_loot_component(
+        "!minecraft:horse/variant",
+        &Some(Tag::Compound(Default::default())),
+    );
     assert!(exact.craft(&context, &[Some(egg.clone())], 1).is_none());
     assert!(removal.craft(&context, &[Some(egg.clone())], 1).is_some());
     egg.data_mut().set_loot_component(
