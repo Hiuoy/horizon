@@ -6576,7 +6576,7 @@ impl Game<'_> {
         self.session_lock = Some(session_lock);
         // Keep the no-pack preload; a world's packs replace it atomically.
         // A later /reload keeps this session's synchronized registries.
-        lan::open_world_sync_data(
+        lan::sync::open_world_sync_data(
             &self.options.resources,
             &self.res.core.item_data,
             &pack_files(&self.world_tables),
@@ -6770,8 +6770,8 @@ impl Game<'_> {
         }
         // Clear sync data (registries, dialog tags) so dialogs don't leak
         // between worlds.
-        lan::forget_sync_data();
-        lan::forget_server_sources();
+        lan::sync::forget_sync_data();
+        lan::sync::forget_server_sources();
         let mut title = self
             .new_title(std::env::current_dir()?.join("saves"))
             .with_user(|| self.options.player_name());
@@ -11503,7 +11503,7 @@ fn load_world_rest(
         // hold its files so it is read once.
         let _recipe_files = horizon_client::json_folder::read(&root.join("data/minecraft/recipe"));
         let sources = startup::time("rest.recipe_sources", || {
-            lan::load_sources(
+            lan::sync::load_sources(
                 root,
                 &resources.core.item_data,
                 resources.core.item_data.context().origin(),
