@@ -6429,7 +6429,7 @@ impl Game<'_> {
         self.session_lock = Some(session_lock);
         // Keep the no-pack preload; a world's packs replace it atomically.
         // A later /reload keeps this session's synchronized registries.
-        lan::open_world_sync_data(
+        lan::sync::open_world_sync_data(
             &self.options.resources,
             &self.res.core.item_data,
             &pack_files(&self.world_tables),
@@ -6623,8 +6623,8 @@ impl Game<'_> {
         }
         // Clear sync data (registries, dialog tags) so dialogs don't leak
         // between worlds.
-        lan::forget_sync_data();
-        lan::forget_server_sources();
+        lan::sync::forget_sync_data();
+        lan::sync::forget_server_sources();
         let mut title = self
             .new_title(std::env::current_dir()?.join("saves"))
             .with_user(|| self.options.player_name());
@@ -11274,6 +11274,7 @@ const NUMERIC_KEYS: [KeyCode; 11] = [
     KeyCode::Numpad8,
     KeyCode::Numpad9,
 ];
+
 
 /// A title-shaped frame: black clear and panorama, only the HUD is drawn.
 /// The window's `HWND`, for the boot screen's GDI paint (`horizon_threads`):
