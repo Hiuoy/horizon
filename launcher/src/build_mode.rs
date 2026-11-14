@@ -228,7 +228,7 @@ impl Launcher {
             .flex()
             .flex_col()
             .gap(px(8.))
-            .child(text_in(13., pal.ink).child(check.summary.clone()));
+            .child(text_in(13., pal.ink).child(check.summary.replace('`', "")));
         if back_up {
             body = body.child(
                 text_in(13., pal.warn).child(native_mods::fit::update_worlds(&check.worlds)),
@@ -303,6 +303,8 @@ impl Launcher {
         };
         let can_build = self.pending_consent.is_none()
             && !(self.native_step.is_some() && mine)
+            // While worlds are at stake the choice row below is the only decision.
+            && !(mine && self.native_worlds.is_some())
             && (error.is_some() || needs.is_some());
         let mut right = div().flex().items_center().gap(px(8.));
         if self.native_step.is_none() {
@@ -356,7 +358,12 @@ impl Launcher {
                     .items_start()
                     .justify_between()
                     .gap(px(12.))
-                    .child(text_in(13., pal.danger).flex_1().min_w_0().child(e.clone()))
+                    .child(
+                        text_in(13., pal.danger)
+                            .flex_1()
+                            .min_w_0()
+                            .child(e.replace('`', "")),
+                    )
                     .child(
                         button("native-show-log", "Show log", Kind::Ghost, &t).on_click(
                             cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -744,7 +751,11 @@ impl Launcher {
                                 .font_weight(FontWeight::MEDIUM)
                                 .child(headline),
                         )
-                        .child(text_in(12., pal.muted).child(reason)),
+                        .children(reason.split('\n').map(|paragraph| {
+                            text_in(12., pal.muted)
+                                .pb(px(4.))
+                                .child(paragraph.replace('`', ""))
+                        })),
                 )
                 .child(off)
                 .child(build_now)

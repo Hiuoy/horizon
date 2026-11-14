@@ -411,7 +411,7 @@ pub fn back_up_and_update() -> &'static str {
 
 /// [`back_up_and_update`] on the Build panel, where nothing is being updated.
 pub fn back_up_and_build() -> &'static str {
-    tr("Back up these worlds and build without the mod")
+    tr("Back up these worlds and build without what doesn't fit")
 }
 
 #[cfg(test)]

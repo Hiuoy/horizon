@@ -67,7 +67,7 @@ impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let text = match self {
             Self::NoSdk { build } => trf(
-                "{build} has no mod tools yet (its SDK build failed or is still running). Pick another game build, or try again later.",
+                "The mod tools for {build} aren't ready yet. Pick another game build, or try again later.",
                 &[("build", build)],
             ),
             Self::Offline { build, bytes: Some(bytes) } => trf(
@@ -78,9 +78,9 @@ impl std::fmt::Display for Refusal {
                 "The launcher is offline and the mod tools for {build} aren't downloaded yet. Connect to the internet and try again.",
                 &[("build", build)],
             ),
-            Self::Unsigned { build, why } => trf(
-                "The mod tools for {build} didn't pass Horizon's safety check, so nothing was installed and your game is untouched. Try again later; if it keeps happening, please report it.\n{why}",
-                &[("build", build), ("why", why)],
+            Self::Unsigned { build, .. } => trf(
+                "The mod tools for {build} didn't pass Horizon's safety check, so nothing was installed and your game is untouched. Try again later; if it keeps happening, please report it.",
+                &[("build", build)],
             ),
             Self::UpdateLauncher { build, what } => trf(
                 "The mod tools for {build} need a newer launcher. Update the launcher, then build again.\n({what})",
