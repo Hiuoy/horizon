@@ -228,7 +228,7 @@ impl Launcher {
             .flex()
             .flex_col()
             .gap(px(8.))
-            .child(text_in(13., pal.ink).child(check.summary.replace('`', "")));
+            .child(text_in(13., pal.ink).child(check.summary.clone()));
         if back_up {
             body = body.child(
                 text_in(13., pal.warn).child(native_mods::fit::update_worlds(&check.worlds)),
@@ -358,12 +358,7 @@ impl Launcher {
                     .items_start()
                     .justify_between()
                     .gap(px(12.))
-                    .child(
-                        text_in(13., pal.danger)
-                            .flex_1()
-                            .min_w_0()
-                            .child(e.replace('`', "")),
-                    )
+                    .child(text_in(13., pal.danger).flex_1().min_w_0().child(e.clone()))
                     .child(
                         button("native-show-log", "Show log", Kind::Ghost, &t).on_click(
                             cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -770,7 +765,7 @@ impl Launcher {
                         .children(reason.split('\n').map(|paragraph| {
                             text_in(12., pal.muted)
                                 .pb(px(4.))
-                                .child(paragraph.replace('`', ""))
+                                .child(paragraph.to_owned())
                         })),
                 )
                 .child(off)

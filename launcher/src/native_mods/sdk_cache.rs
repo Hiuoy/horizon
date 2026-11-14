@@ -316,9 +316,16 @@ fn index_in(root: &Path, base: &Base, commit: &str, keys: &[PublicKey]) -> Resul
     })?;
     let sums = read(SUMS)?;
     let signature = read(SIGNATURE)?.map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
-    let unsigned = |why: String| Refusal::Unsigned {
-        build: build.clone(),
-        why,
+    let unsigned = |why: String| {
+        // The player's message is short; what to report goes to the build log.
+        let _ = super::append_log(&trf(
+            "The mod tools for {build} were refused: {why}",
+            &[("build", &build), ("why", &why)],
+        ));
+        Refusal::Unsigned {
+            build: build.clone(),
+            why,
+        }
     };
     // Signed for exactly `sdk-<build id>`: neither a game release's sums nor another build's SDK
     // pass for it.
@@ -810,9 +817,16 @@ fn signed_game_index(
         build: version.to_owned(),
     })?;
     let sums = read(SUMS)?;
-    let unsigned = |why: String| Refusal::Unsigned {
-        build: version.to_owned(),
-        why,
+    let unsigned = |why: String| {
+        // The player's message is short; what to report goes to the build log.
+        let _ = super::append_log(&trf(
+            "The mod tools for {build} were refused: {why}",
+            &[("build", version), ("why", &why)],
+        ));
+        Refusal::Unsigned {
+            build: version.to_owned(),
+            why,
+        }
     };
     let signed = if let Some(channel) = channel {
         let signature = read(SIGNATURE_V2)?.map(|b| String::from_utf8_lossy(&b).into_owned());

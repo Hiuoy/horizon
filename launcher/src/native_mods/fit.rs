@@ -94,21 +94,21 @@ pub(super) fn judge(
 /// An item as people read it: "the hook `player_logged_in`".
 pub fn item(id: &str) -> String {
     let Some((kind, name)) = uses::item(id) else {
-        return format!("`{id}`");
+        return id.to_owned();
     };
     let en = match kind {
-        ItemKind::Hook => "the hook `{name}`",
-        ItemKind::Argument => "the argument `{name}`",
-        ItemKind::Trait => "the trait `{name}`",
-        ItemKind::Method => "the method `{name}`",
-        ItemKind::AssociatedItem => "the associated item `{name}`",
-        ItemKind::Function => "the function `{name}`",
-        ItemKind::Macro => "the macro `{name}`",
-        ItemKind::PartKind => "the Part kind `{name}`",
-        ItemKind::Capability => "the capability `{name}`",
-        ItemKind::Type => "the type `{name}`",
-        ItemKind::Variant => "the variant `{name}`",
-        ItemKind::Field => "the field `{name}`",
+        ItemKind::Hook => "the hook {name}",
+        ItemKind::Argument => "the argument {name}",
+        ItemKind::Trait => "the trait {name}",
+        ItemKind::Method => "the method {name}",
+        ItemKind::AssociatedItem => "the associated item {name}",
+        ItemKind::Function => "the function {name}",
+        ItemKind::Macro => "the macro {name}",
+        ItemKind::PartKind => "the Part kind {name}",
+        ItemKind::Capability => "the capability {name}",
+        ItemKind::Type => "the type {name}",
+        ItemKind::Variant => "the variant {name}",
+        ItemKind::Field => "the field {name}",
     };
     trf(en, &[("name", &name)])
 }
@@ -121,21 +121,18 @@ pub fn change(misfit: &Misfit) -> String {
         Change::Removed => trf("{item} (removed)", &[("item", &what)]),
         Change::Changed => trf("{item} (changed)", &[("item", &what)]),
         Change::LostImpl(name) => trf(
-            "{item} no longer implements `{trait}`",
+            "{item} no longer implements {trait}",
             &[("item", &what), ("trait", name)],
         ),
         Change::Fields { gained, at } if gained.is_empty() => trf(
-            "the fields of {item} changed, and `{at}` builds it field by field",
+            "the fields of {item} changed, and {at} builds it field by field",
             &[("item", &what), ("at", at)],
         ),
         Change::Fields { gained, at } => trf(
-            "{item} gained {fields}, and `{at}` builds it field by field",
+            "{item} gained {fields}, and {at} builds it field by field",
             &[
                 ("item", &what),
-                (
-                    "fields",
-                    &list(gained.iter().map(|name| format!("`{name}`"))),
-                ),
+                ("fields", &list(gained.iter().cloned())),
                 ("at", at),
             ],
         ),
@@ -148,15 +145,15 @@ pub fn change(misfit: &Misfit) -> String {
             ],
         ),
         Change::NotBuildable { at } => trf(
-            "{item} can no longer be built with a literal, and `{at}` builds it",
+            "{item} can no longer be built with a literal, and {at} builds it",
             &[("item", &what), ("at", at)],
         ),
         Change::Path(path) => trf(
-            "`mod_api::{path}` is no longer exported under that path",
+            "mod_api::{path} is no longer exported under that path",
             &[("path", path)],
         ),
         Change::Route { from, owner } => trf(
-            "`{from}` no longer includes `{owner}`, which this mod calls `{member}` on",
+            "{from} no longer includes {owner}, which this mod calls {member} on",
             &[
                 ("from", &leaf(from)),
                 ("owner", &leaf(owner)),

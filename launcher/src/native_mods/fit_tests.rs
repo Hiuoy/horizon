@@ -112,8 +112,8 @@ fn a_changed_or_removed_item_it_uses_is_named() {
     assert_eq!(
         said,
         [
-            "the function `give` (changed)",
-            "the hook `player_logged_in` (removed)"
+            "the function give (changed)",
+            "the hook player_logged_in (removed)"
         ]
     );
     std::fs::remove_dir_all(dir).unwrap();
@@ -185,13 +185,13 @@ fn at_most_five_changes_are_named_then_how_many_more() {
         })
         .collect();
     let said = changes(&misfits);
-    assert!(said.contains("`f4`"), "{said}");
-    assert!(!said.contains("`f5`"), "{said}");
+    assert!(said.contains("f4"), "{said}");
+    assert!(!said.contains("f5"), "{said}");
     assert!(
         said.ends_with("and 2 more (all of them are in the build log)"),
         "{said}"
     );
-    assert_eq!(changes(&misfits[..1]), "the function `f0` (removed)");
+    assert_eq!(changes(&misfits[..1]), "the function f0 (removed)");
 }
 
 #[test]
@@ -215,7 +215,7 @@ fn every_message_names_the_mod_the_builds_and_the_worlds() {
         refusal("Greeter", &misfit, build),
         "Greeter doesn't fit this game.\nIt was made for aaaaaaa and this instance runs \
          nightly-2026-11-13 (afe471c). Since then the game changed 2 things that Greeter uses: the hook \
-         `player_logged_in` (changed); the method `ServerHost::give_item` (removed).\nThe game will be \
+         player_logged_in (changed); the method ServerHost::give_item (removed).\nThe game will be \
          built without Greeter, which stays installed. Ask its author for an update made for this game."
     );
     let fits = Verdict::Fits {
@@ -261,7 +261,7 @@ fn an_update_says_how_many_mods_fit_and_which_will_be_switched_off() {
     assert_eq!(
         update_summary(build, 4, &off),
         "Update to nightly-2026-11-20 (9a8b7c6)? 3 of your 4 native mods fit it.\nGreeter does \
-         not: the hook `player_logged_in` (changed). It will be switched off until its author makes a version that fits."
+         not: the hook player_logged_in (changed). It will be switched off until its author makes a version that fits."
     );
     let exact = Verdict::Exact {
         made_for: OTHER_BUILD.into(),
