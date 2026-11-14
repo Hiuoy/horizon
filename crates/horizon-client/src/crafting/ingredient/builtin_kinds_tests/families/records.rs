@@ -565,13 +565,12 @@ fn lodestone_tracker_component_recipes_decode_validate_and_match() {
         check(&loaded, &plain, None);
     }
     // Raw NBT can contain End; JSON deliberately refuses nested null first.
-    for invalid in [Tag::End] {
-        assert!(
-            horizon_command::item::decoded_component_value(ID, &invalid, &items.component_registry)
-                .is_err()
-        );
-        check(&recipes, &stack(invalid), None);
-    }
+    let invalid = Tag::End;
+    assert!(
+        horizon_command::item::decoded_component_value(ID, &invalid, &items.component_registry)
+            .is_err()
+    );
+    check(&recipes, &stack(invalid), None);
 }
 
 #[test]
