@@ -64,6 +64,7 @@ pub const MAX_SPECIAL_MODEL_PARTS: usize = 256;
 /// A mod's special model renderer: vanilla's `SpecialModelRenderer`, held by the game for every
 /// special model of the type it is registered for. Models of a type share one renderer, so what
 /// differs between them comes from the model object (`config`) and the stack.
+/// Renderer answers depend only on stack and configuration. Host-state changes do not invalidate a continuously drawn unchanged stack. Answers drop after all views stop drawing the stack or resources reload.
 pub trait SpecialModelRenderer: Send + Sync + 'static {
     /// `extractArgument` and `submit` in one: the models to draw for `stack`, in order, from the
     /// special model's `model` object (`config`, its JSON as NBT, converted once at load). Asked
@@ -119,6 +120,7 @@ pub struct ReplacedSpecialModelRenderer {
 pub struct SpecialModelRendererRegistry {
     renderers: BTreeMap<String, (Option<&'static str>, Arc<dyn SpecialModelRenderer>)>,
     replaced: Vec<ReplacedSpecialModelRenderer>,
+    initial: Vec<(String, Option<&'static str>)>,
 }
 
 impl SpecialModelRenderers for SpecialModelRendererRegistry {
@@ -130,11 +132,21 @@ impl SpecialModelRenderers for SpecialModelRendererRegistry {
                 earlier,
                 later,
             });
+        } else {
+            self.initial.push((kind, later));
         }
     }
 }
 
 impl SpecialModelRendererRegistry {
+    /// The first mod registration of each type. The engine uses its own builtin decoder
+    /// to distinguish replacement of a game type from a new type, irrespective of namespace.
+    pub fn initial_owners(&self) -> impl Iterator<Item = (&str, Option<&'static str>)> {
+        self.initial
+            .iter()
+            .map(|(kind, owner)| (kind.as_str(), *owner))
+    }
+
     /// Each type's renderer, the last registration of a type winning, and the registrations that
     /// replaced an earlier one.
     pub fn into_renderers(
@@ -177,6 +189,10 @@ mod tests {
         registry.register("a:pan".into(), Arc::new(Nothing));
         registry.register("a:pan".into(), last.clone());
         registry.register("minecraft:shield".into(), Arc::new(Nothing));
+        assert_eq!(
+            registry.initial_owners().collect::<Vec<_>>(),
+            vec![("a:pan", None), ("minecraft:shield", None)]
+        );
         let (renderers, replaced) = registry.into_renderers();
         assert_eq!(renderers.len(), 2);
         assert!(Arc::ptr_eq(&renderers["a:pan"], &last));

@@ -151,6 +151,7 @@ fn quads(renderer: &ItemRenderer, state: &ItemRenderState) -> Vec<ItemQuad> {
 }
 
 #[test]
+#[ignore = "daily"]
 fn a_registered_special_model_draws_its_renderers_resource_models() {
     let root = std::env::temp_dir().join(format!("horizon-special-parts-{}", std::process::id()));
     register_special_model_types(vec!["spt:pan".into()]);

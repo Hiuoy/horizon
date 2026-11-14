@@ -38,6 +38,7 @@ impl SpecialModelRenderer for Skillet {
     }
 }
 
+#[mod_api::horizon_mod]
 impl Hooks for MyMod {
     fn register_special_model_renderer(
         &self,
@@ -91,3 +92,5 @@ the screen, or changes, is asked again when it is next drawn; a resource reload 
   until then; nothing it answered is drawn in part.
 - A part naming a model no pack has makes that answer draw the missing model, logged once for the
   model.
+
+Renderer answers depend only on stack and configuration. Host-state changes do not invalidate a continuously drawn unchanged stack. Answers drop after all views stop drawing the stack or resources reload.

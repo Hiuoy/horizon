@@ -51,7 +51,9 @@ pub(in crate::game) fn reload() {
     for (_, resolved) in REGISTERED.get().into_iter().flatten() {
         resolved.failed.store(false, Ordering::Relaxed);
     }
-    answers().kept.clear();
+    let mut answers = answers();
+    answers.kept.clear();
+    answers.refused.clear();
 }
 
 /// Once per frame of the view `view` (its game's address), before it is drawn: the answers of
@@ -81,7 +83,7 @@ pub(in crate::game) fn parts(
         use super::api_values::TryIntoApi;
         let api_stack = stack
             .try_into_api()
-            .map_err(|e| warn_unreadable_once(kind, &stack.item, &format!("{e:?}")))
+            .map_err(|e| warn_unreadable_once(kind, &stack.item, || format!("{e:?}")))
             .ok()?;
         let parts = guarded(kind, resolved, || {
             resolved.inner.extract(host, &api_stack, config)
@@ -92,18 +94,21 @@ pub(in crate::game) fn parts(
 
 /// Says once per type and item that a stack of the item couldn't be given to the type's
 /// renderer, so it draws the missing model.
-fn warn_unreadable_once(kind: &str, item: &str, error: &str) {
-    static SEEN: Mutex<std::collections::BTreeSet<(String, String)>> =
-        Mutex::new(std::collections::BTreeSet::new());
-    if SEEN
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .insert((kind.to_owned(), item.to_owned()))
-    {
-        log::warn!(
-            "Horizon: a stack of {item} can't be read for the special model renderer of {kind} ({error}); it draws the missing model"
-        );
+fn warn_unreadable_once(kind: &str, item: &str, error: impl FnOnce() -> String) {
+    static SEEN: Mutex<std::collections::BTreeMap<String, std::collections::BTreeSet<String>>> =
+        Mutex::new(std::collections::BTreeMap::new());
+    let mut seen = SEEN.lock().unwrap_or_else(PoisonError::into_inner);
+    if seen.get(kind).is_some_and(|items| items.contains(item)) {
+        return;
     }
+    seen.entry(kind.to_owned())
+        .or_default()
+        .insert(item.to_owned());
+    drop(seen);
+    let error = error();
+    log::warn!(
+        "Horizon: a stack of {item} can't be read for the special model renderer of {kind} ({error}); it draws the missing model"
+    );
 }
 
 /// The answer for `stack` in the model node `node`: the one kept in `answers` for an equal stack,
@@ -119,7 +124,17 @@ fn answer(
     if let Some(kept) = lock().drawn(key, stack) {
         return Some(kept);
     }
-    let prepared = ask()?;
+    if lock()
+        .refused
+        .get(&key)
+        .is_some_and(|stacks| stacks.contains(stack))
+    {
+        return None;
+    }
+    let Some(prepared) = ask() else {
+        lock().refused.entry(key).or_default().push(stack.clone());
+        return None;
+    };
     lock().keep(key, stack, prepared.clone());
     Some(prepared)
 }
@@ -133,6 +148,7 @@ struct Answers {
     /// Each view's last two frames: when its previous one began and its current one.
     views: FxHashMap<usize, [u64; 2]>,
     kept: FxHashMap<(usize, u64), Vec<Kept>>,
+    refused: FxHashMap<(usize, u64), Vec<StackView>>,
 }
 /// A view no frame of which began for this many frames (of all views) is gone.
 const VIEW_GONE_AFTER: u64 = 256;
@@ -164,6 +180,7 @@ impl Answers {
     /// Starts the next frame of `view`, keeping only the answers drawn since the oldest of the
     /// views' previous frames began: what some view's last frame may have drawn.
     fn begin_frame(&mut self, view: usize) {
+        self.refused.clear();
         self.frame += 1;
         let frame = self.frame;
         // A view's first frame keeps what was drawn before it began, as if its own.
@@ -310,6 +327,25 @@ mod tests {
         assert_eq!(parts[0].model, "t:item/a");
         assert_eq!(parts[0].pose.0, Mat4::translation([1.0, 2.0, 3.0]).0);
         assert_eq!(parts[0].tints, [0xFF11_2233_u32 as i32]);
+    }
+
+    #[test]
+    fn unreadable_answers_are_retained_only_for_the_frame() {
+        let answers = Mutex::<Answers>::default();
+        let stack = StackView::new("t:pan", 1);
+        let asked = std::cell::Cell::new(0);
+        let draw = || {
+            answer(&answers, 1, &stack, || {
+                asked.set(asked.get() + 1);
+                None
+            })
+        };
+        assert!(draw().is_none());
+        assert!(draw().is_none());
+        assert_eq!(asked.get(), 1);
+        answers.lock().unwrap().begin_frame(1);
+        assert!(draw().is_none());
+        assert_eq!(asked.get(), 2);
     }
 
     /// An unchanged stack is asked once for as long as every frame draws it, however many stacks

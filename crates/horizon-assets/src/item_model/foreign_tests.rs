@@ -178,3 +178,14 @@ fn an_unregistered_node_type_fails_by_name() {
     }
     assert!(ClientItem::from_json(r#"{"model":{"type":"ae2:facade"}}"#).is_err());
 }
+
+/// Ownership comes from the decoder, not from the minecraft namespace or registrations.
+#[test]
+fn special_model_builtin_ownership_uses_the_decoder_identity() {
+    assert!(SpecialModel::is_builtin_type("minecraft:bell"));
+    assert!(SpecialModel::is_builtin_type("minecraft:chest"));
+    assert!(!SpecialModel::is_builtin_type("minecraft:foo"));
+    assert!(!SpecialModel::is_builtin_type("example:bell"));
+    assert!(SpecialModel::decode(&serde_json::json!({"type": "minecraft:bell"})).is_ok());
+    assert!(SpecialModel::decode(&serde_json::json!({"type": "minecraft:foo"})).is_err());
+}

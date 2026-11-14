@@ -222,3 +222,5 @@ Future implementation tests use original assets, not third-party model files.
   Recommendation: use the existing lifecycle holder with the budgets above,
   test representative original scenes, and enlarge only extension limits with
   measured evidence; preserve vanilla capacity throughout.
+
+Renderer answers depend only on stack and configuration. Host-state changes do not invalidate a continuously drawn unchanged stack. Answers drop after all views stop drawing the stack or resources reload.

@@ -522,6 +522,14 @@ pub(super) fn register_resource_sources(role: ExecutionRole) {
 fn register_special_model_renderers() {
     let mut registry = mod_api::SpecialModelRendererRegistry::default();
     Game::native_register_special_model_renderer(&RegistrationContext::new(), &mut registry);
+    for (kind, owner) in registry.initial_owners() {
+        if horizon_assets::item_model::SpecialModel::is_builtin_type(kind) {
+            log::warn!(
+                "Horizon: special model type {kind} registered by the game is replaced by {}'s registration",
+                owner.unwrap_or("the game")
+            );
+        }
+    }
     let (mut renderers, replaced) = registry.into_renderers();
     for replaced in replaced {
         let name = |id: Option<&str>| id.unwrap_or("the game").to_owned();
