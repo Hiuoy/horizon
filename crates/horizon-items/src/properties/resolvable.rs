@@ -37,6 +37,21 @@ impl Identifier<'_> {
         value.extend_from_slice(self.path);
         Tag::String(JavaString(value))
     }
+
+    /// Compare a snapshot's UTF-8 key without allocating a canonical tag or UTF-16 buffer.
+    pub fn matches_str(&self, value: &str) -> bool {
+        let (namespace, path) = value.split_once(':').unwrap_or(("minecraft", value));
+        let namespace = if namespace.is_empty() {
+            "minecraft"
+        } else {
+            namespace
+        };
+        self.path.iter().copied().eq(path.encode_utf16())
+            && match self.namespace {
+                Some(units) => units.iter().copied().eq(namespace.encode_utf16()),
+                None => namespace == "minecraft",
+            }
+    }
 }
 
 fn namespace_char(value: u16) -> bool {
@@ -142,6 +157,12 @@ mod tests {
 
     #[test]
     fn number_and_provider_codecs_preserve_java_equality_and_identifier_rules() {
+        let key = Tag::String("stone".into());
+        let key = identifier(&key).unwrap();
+        assert!(key.matches_str("minecraft:stone"));
+        assert!(key.matches_str(":stone"));
+        assert!(!key.matches_str("mod:stone"));
+        assert!(!key.matches_str("minecraft:stone_extra"));
         assert_eq!(
             int(&Tag::Long(4_294_967_297)).unwrap().to_tag(),
             Tag::Int(1)
