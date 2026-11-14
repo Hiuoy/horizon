@@ -9,6 +9,8 @@ pub mod component_values;
 pub mod cooking_fuel;
 #[path = "item_data/custom_model_data.rs"]
 pub mod custom_model_data;
+#[path = "item_data/component_values.rs"]
+pub mod component_values;
 #[path = "item_data/ingredient_components.rs"]
 pub mod ingredient_components;
 use crate::items::{ItemInfo, ItemStack};

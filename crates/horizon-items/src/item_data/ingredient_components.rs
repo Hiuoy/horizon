@@ -1,4 +1,5 @@
 //! Borrowed live component queries for decoded ingredient predicates.
+use super::component_values::{damage_resistant_equal, identifier_equal};
 use super::*;
 
 /// Visit present component names without serializing or allocating.
@@ -244,6 +245,10 @@ pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
                 _ => false,
             }
         }
+        "minecraft:damage_resistant" => damage_resistant_equal(
+            a.data().and_then(|d| d.other(id)),
+            b.data().and_then(|d| d.other(id)),
+        ),
         "minecraft:rarity" => rarity(a) == rarity(b),
         "minecraft:ominous_bottle_amplifier" => ominous_amplifier(a) == ominous_amplifier(b),
         // DyeColor.CODEC's canonical NbtOps value is its exact serialized name.

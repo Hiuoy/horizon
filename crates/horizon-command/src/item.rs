@@ -10,6 +10,7 @@ use super::{CmdResult, CommandError, Reader, SuggestionsBuilder};
 use horizon_core::nbt::{Compound, Tag};
 use horizon_world::datafix::dynamic::as_number;
 use horizon_items::properties::swing_animation::SwingAnimation;
+use horizon_items::item_data::component_values;
 use std::rc::Rc;
 
 fn int_of(t: &Tag) -> Option<i64> {
@@ -63,6 +64,7 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:item_name",
     "minecraft:item_model",
     "minecraft:lodestone_tracker",
+    "minecraft:damage_resistant",
     "minecraft:block_entity_data",
     "minecraft:enchantable",
     "minecraft:ominous_bottle_amplifier",
@@ -138,6 +140,10 @@ pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Resul
     }
     if let Some(registry) = horizon_items::properties::pet_variants::registry(id) {
         return horizon_items::properties::pet_variants::decode(registry, value, reg);
+        return component_values::identifier(value);
+    }
+    if id == "minecraft:damage_resistant" {
+        return component_values::damage_resistant(value, reg);
     }
     decode_component(id, value, reg)?;
     if id == "minecraft:block_entity_data" {
@@ -324,6 +330,8 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
             .ok_or_else(|| "Not a number".into()),
         "minecraft:custom_name" | "minecraft:item_name" => super::component::decode(t),
         "minecraft:item_model" => identifier_value(t).map(|_| ()),
+        "minecraft:item_model" => component_values::identifier(t).map(|_| ()),
+        "minecraft:damage_resistant" => component_values::damage_resistant(t, reg).map(|_| ()),
         // TypedEntityData.codec: the type is the compound's id.
         "minecraft:block_entity_data" => match t {
             Tag::Compound(c) => match c.get(&"id".into()) {
