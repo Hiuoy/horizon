@@ -9,6 +9,18 @@ impl Game<'_> {
     pub(in crate::game) fn camera(&self) -> Option<mod_api::Camera> {
         self.native_camera_frame.clone()
     }
+    /// `GameRenderer.projectPointToScreen` against this frame's camera; None behind the camera,
+    /// for a non-finite point, outside a world and before the first frame.
+    pub(in crate::game) fn project(&self, at: [f64; 3]) -> Option<[f32; 3]> {
+        let camera = self.native_camera_frame.as_ref()?;
+        horizon_client::camera::project_point(
+            &camera.projection,
+            camera.position,
+            camera.yaw,
+            camera.pitch,
+            at,
+        )
+    }
     /// The entity the view follows (`Minecraft.getCameraEntity`): the entity a server attached
     /// the camera to, else the local player. None outside a client world.
     pub(in crate::game) fn camera_entity(&self) -> Option<EntityRef> {
