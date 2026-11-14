@@ -52,7 +52,7 @@ class HistoryFetchTests(unittest.TestCase):
                     actual = int((root / "calls").read_text()) if (root / "calls").exists() else 0
                     self.assertEqual(actual, count)
                     limits = (root / "limits").read_text().splitlines() if count else []
-                    self.assertEqual([json.loads(line) for line in limits], [["--kill-after=10s", "150s"]] * count)
+                    self.assertEqual([json.loads(line) for line in limits], [["--kill-after=10s", "300s"]] * count)
                     if expected:
                         self.assertIn(f"::error::{name}:", result.stdout)
                         self.assertIn("GitHub failed or timed out twice", result.stdout)
