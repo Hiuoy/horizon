@@ -789,11 +789,11 @@ impl Game<'_> {
                         }
                         _ => None,
                     });
-                if host.hub.guests[gi]
+                let closing = host.hub.guests[gi]
                     .menu
                     .as_ref()
-                    .is_some_and(|m| m.window == p.container)
-                {
+                    .is_some_and(|m| m.window == p.container);
+                if closing {
                     self.guest_container_closed(conn);
                 }
                 if let Some(key) = vehicle {
@@ -804,6 +804,9 @@ impl Game<'_> {
                 };
                 host.hub.container_closed(conn, p.container);
                 self.guest_carried_back(gi);
+                if closing {
+                    self.player_menu_closing(conn);
+                }
             }
             S::ChatCommand(c) => self.guest_chat_command(conn, &c.command),
             S::CustomPayload(p) if p.channel == horizon_protocol::quiet::CHANNEL => {
