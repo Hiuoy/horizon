@@ -200,6 +200,22 @@ pub(super) fn json_patch(data: &serde_json::Map<String, Value>) -> Option<Compou
         ("lodestone_tracker", &["target", "tracked"]),
         ("container_loot", &["seed"]),
         ("tooltip_display", &["hide_tooltip", "hidden_components"]),
+        ("attack_animation", &["type", "duration"]),
+        (
+            "use_effects",
+            &["can_sprint", "interact_vibrations", "speed_multiplier"],
+        ),
+        (
+            "attack_range",
+            &[
+                "min_reach",
+                "max_reach",
+                "min_creative_reach",
+                "max_creative_reach",
+                "hitbox_margin",
+                "mob_factor",
+            ],
+        ),
     ];
     let mut normalized = None;
     for (id, value) in data {
