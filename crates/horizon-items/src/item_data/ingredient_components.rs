@@ -131,6 +131,18 @@ pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
                     .and_then(SwingAnimation::decode)
             };
             animation(a).is_some_and(|expected| animation(b) == Some(expected))
+    }
+        "minecraft:attack_range" => {
+            let decoded = |stack: &ItemStack| {
+                stack
+                    .data()
+                    .and_then(|data| data.other(id))
+                    .and_then(crate::properties::attack_range::decode)
+            };
+            match (decoded(a), decoded(b)) {
+                (Some(a), Some(b)) => a == b,
+                _ => false,
+            }
         }
         "minecraft:damage" => a.damage == b.damage,
         "minecraft:map_id" => map_id(a) == map_id(b),

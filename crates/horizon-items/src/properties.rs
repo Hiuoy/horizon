@@ -2,6 +2,7 @@
 use horizon_core::{color::hsv_to_argb, nbt::Tag};
 
 pub mod pet_variants;
+pub mod attack_range;
 pub mod resolvable;
 pub mod tooltip_display;
 pub mod swing_animation;
