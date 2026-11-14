@@ -70,7 +70,35 @@ pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
         ),
         "minecraft:item_name" => item_name_equal(a, b),
         "minecraft:rarity" => rarity(a) == rarity(b),
+        "minecraft:tooltip_display" => tooltip_display_equal(a, b),
         _ => stored_component_equal(id, a, b),
+    }
+}
+
+fn tooltip_display_equal(a: &ItemStack, b: &ItemStack) -> bool {
+    use crate::properties::tooltip_display::TooltipDisplay;
+    fn raw(stack: &ItemStack) -> Option<&Tag> {
+        stack
+            .data()
+            .and_then(|data| data.other("minecraft:tooltip_display"))
+    }
+    match (raw(a), raw(b)) {
+        (Some(a), Some(b)) => match (TooltipDisplay::parse(a), TooltipDisplay::parse(b)) {
+            (Some(a), Some(b)) => a.equal(b),
+            _ => false,
+        },
+        (Some(value), None) => {
+            b.data().is_some_and(|data| data.ominous_banner)
+                && TooltipDisplay::parse(value).is_some_and(|value| value.is_ominous())
+        }
+        (None, Some(value)) => {
+            a.data().is_some_and(|data| data.ominous_banner)
+                && TooltipDisplay::parse(value).is_some_and(|value| value.is_ominous())
+        }
+        (None, None) => {
+            a.data().is_some_and(|data| data.ominous_banner)
+                == b.data().is_some_and(|data| data.ominous_banner)
+        }
     }
 }
 

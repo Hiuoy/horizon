@@ -54,9 +54,20 @@ Native registrations retain their persistent NBT validation contract.
 
 The shared decoder currently covers `damage`, `repair_cost`, `max_damage`,
 `max_stack_size`, `rarity`, `enchantments`, `stored_enchantments`, `custom_name`,
-`item_name`, and `block_entity_data` in the `minecraft` namespace. The other
-112 registered built-ins use stored-value matching while their shared decoders
+`item_name`, `block_entity_data`, and `tooltip_display` in the `minecraft`
+namespace. The other 111 registered built-ins use stored-value matching while their shared decoders
 are added incrementally in **#3875**. Their absence is not a load refusal.
+
+`tooltip_display` is a record with optional `hide_tooltip` (false) and
+`hidden_components` (empty). The boolean accepts ordinary NBT numeric types:
+zero, including negative zero, is false; any other value is true. Hidden component
+ids resolve through the live component-type registry, including declared mod
+components, transient types, and types whose payload decoder is not implemented.
+Unqualified ids use `minecraft`. Unknown or malformed references reject the recipe.
+The hidden collection is a set: order and duplicate references do not affect
+equality. Empty NBT numeric arrays also decode as empty lists; nonempty numeric
+arrays fail because component references must be strings. Omitted fields equal
+their explicit defaults, and unknown record fields do not participate in equality.
 
 Component ingredient displays contain the patch, including removals. Difference
 lists retain the base list and remove only items whose default stack passes the

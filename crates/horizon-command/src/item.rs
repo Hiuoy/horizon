@@ -33,12 +33,16 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:custom_name",
     "minecraft:item_name",
     "minecraft:block_entity_data",
+    "minecraft:tooltip_display",
 ];
 
 /// Validate and decode a component into the value representation shared with stacks.
 /// Registered components without a shared decoder retain their exact stored value.
 /// Registration is checked by the caller; this helper only rejects failed decodes.
 pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Result<Tag, String> {
+    if id == "minecraft:tooltip_display" {
+        return tooltip_display(value, reg);
+    }
     if !DECODED_COMPONENTS.contains(&id) {
         return Ok(value.clone());
     }
@@ -116,6 +120,7 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
             _ => Err("Not a string".into()),
         },
         "minecraft:enchantments" | "minecraft:stored_enchantments" => enchantment_map(t, reg),
+        "minecraft:tooltip_display" => tooltip_display(t, reg).map(|_| ()),
         "minecraft:custom_name" | "minecraft:item_name" => super::component::decode(t),
         // TypedEntityData.codec: the type is the compound's id.
         "minecraft:block_entity_data" => match t {
@@ -182,6 +187,33 @@ fn enchantment_map(t: &Tag, reg: &Registries) -> Result<(), String> {
             snbt(&Tag::Compound(missed))
         ))
     }
+}
+
+/// `TooltipDisplay.CODEC` and `DataComponentType.CODEC`, using the live registry.
+fn tooltip_display(value: &Tag, reg: &Registries) -> Result<Tag, String> {
+    let display = horizon_items::properties::tooltip_display::TooltipDisplay::parse(value)
+        .ok_or("Invalid tooltip display")?;
+    let mut hidden = Vec::new();
+    for id in display.components() {
+        let tag = id.to_tag();
+        let Tag::String(key) = &tag else {
+            unreachable!("identifier tag")
+        };
+        let key = key.to_string_lossy();
+        if !reg.ids("minecraft:data_component_type").contains(&key)
+            && !reg.persistent_components.contains(&key)
+            && horizon_protocol::item::custom::id(&key).is_none()
+        {
+            return Err(format!("Unknown data component type: {key}"));
+        }
+        if !hidden.contains(&tag) {
+            hidden.push(tag);
+        }
+    }
+    Ok(Tag::compound([
+        ("hide_tooltip", Tag::Byte(i8::from(display.hide_tooltip))),
+        ("hidden_components", Tag::List(hidden)),
+    ]))
 }
 
 /// MinMaxBounds.Ints.CODEC.
@@ -729,6 +761,107 @@ pub fn suggest_predicate(builder: &mut SuggestionsBuilder, reg: &Registries) {
 #[cfg(test)]
 mod tests {
     use super::decode_component;
+
+    #[test]
+    fn tooltip_display_decodes_complete_persistent_nbt_codec() {
+        use super::{Registries, Tag, decoded_component_value};
+        let mut registry = Registries::default();
+        registry
+            .by_registry
+            .entry("minecraft:data_component_type".into())
+            .or_default()
+            .ids = vec!["minecraft:damage".into(), "fixture:transient".into()];
+        registry
+            .persistent_components
+            .push("fixture:declared".into());
+        let decode =
+            |tag: &Tag| decoded_component_value("minecraft:tooltip_display", tag, &registry);
+        for (number, expected) in [
+            (Tag::Byte(-1), 1),
+            (Tag::Short(0), 0),
+            (Tag::Int(2), 1),
+            (Tag::Long(1_i64 << 32), 1),
+            (Tag::Float(0.5_f32.to_bits()), 1),
+            (Tag::Float((-0.0_f32).to_bits()), 0),
+            (Tag::Float(f32::NAN.to_bits()), 1),
+            (Tag::Double(f64::MIN_POSITIVE.to_bits()), 1),
+            (Tag::Double((-0.0_f64).to_bits()), 0),
+            (Tag::Double(f64::NAN.to_bits()), 1),
+        ] {
+            assert_eq!(
+                decode(&Tag::compound([("hide_tooltip", number)])).unwrap(),
+                Tag::compound([
+                    ("hide_tooltip", Tag::Byte(expected)),
+                    ("hidden_components", Tag::List(vec![]))
+                ])
+            );
+        }
+        let expected = Tag::compound([
+            ("hide_tooltip", Tag::Byte(0)),
+            (
+                "hidden_components",
+                Tag::List(vec![
+                    Tag::String("minecraft:damage".into()),
+                    Tag::String("fixture:declared".into()),
+                    Tag::String("fixture:transient".into()),
+                ]),
+            ),
+        ]);
+        assert_eq!(
+            decode(&Tag::compound([
+                (
+                    "hidden_components",
+                    Tag::List(vec![
+                        Tag::String("damage".into()),
+                        Tag::String(":damage".into()),
+                        Tag::String("fixture:declared".into()),
+                        Tag::String("fixture:transient".into()),
+                    ])
+                ),
+                (
+                    "ignored",
+                    Tag::String("record codecs ignore unknown fields".into())
+                ),
+            ]))
+            .unwrap(),
+            expected
+        );
+        for empty in [
+            Tag::List(vec![]),
+            Tag::ByteArray(vec![]),
+            Tag::IntArray(vec![]),
+            Tag::LongArray(vec![]),
+        ] {
+            assert_eq!(
+                decode(&Tag::compound([("hidden_components", empty)])).unwrap(),
+                Tag::compound([
+                    ("hide_tooltip", Tag::Byte(0)),
+                    ("hidden_components", Tag::List(vec![]))
+                ])
+            );
+        }
+        for invalid in [
+            Tag::Byte(0),
+            Tag::compound([("hide_tooltip", Tag::String("true".into()))]),
+            Tag::compound([("hide_tooltip", Tag::Compound(Default::default()))]),
+            Tag::compound([("hidden_components", Tag::String("damage".into()))]),
+            Tag::compound([("hidden_components", Tag::List(vec![Tag::Int(1)]))]),
+            Tag::compound([("hidden_components", Tag::ByteArray(vec![1]))]),
+            Tag::compound([("hidden_components", Tag::IntArray(vec![1]))]),
+            Tag::compound([("hidden_components", Tag::LongArray(vec![1]))]),
+            Tag::compound([(
+                "hidden_components",
+                Tag::List(vec![Tag::String("fixture:unknown".into())]),
+            )]),
+            Tag::compound([(
+                "hidden_components",
+                Tag::List(vec![Tag::String("Bad:identifier".into())]),
+            )]),
+        ] {
+            assert!(decode(&invalid).is_err(), "{invalid:?}");
+            assert!(decode_component("minecraft:tooltip_display", &invalid, &registry).is_err());
+        }
+    }
 
     #[test]
     fn decoded_component_values_use_codec_numbers_and_retain_stored_values() {
