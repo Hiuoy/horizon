@@ -70,6 +70,26 @@ pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
         ),
         "minecraft:item_name" => item_name_equal(a, b),
         "minecraft:rarity" => rarity(a) == rarity(b),
+        "minecraft:cat/sound_variant"
+        | "minecraft:cat/variant"
+        | "minecraft:wolf/sound_variant"
+        | "minecraft:wolf/variant" => {
+            let a = a.data().and_then(|d| d.other(id));
+            let b = b.data().and_then(|d| d.other(id));
+            match (a, b) {
+                (Some(a), Some(b)) => {
+                    match (
+                        crate::properties::resolvable::identifier(a),
+                        crate::properties::resolvable::identifier(b),
+                    ) {
+                        (Some(a), Some(b)) => a == b,
+                        _ => false,
+                    }
+                }
+                (None, None) => true,
+                _ => false,
+            }
+        }
         _ => stored_component_equal(id, a, b),
     }
 }
@@ -288,6 +308,39 @@ fn text_value(tag: &Tag) -> &Tag {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pet_variant_equality_borrows_normalized_registry_keys() {
+        for component in [
+            "minecraft:cat/sound_variant",
+            "minecraft:cat/variant",
+            "minecraft:wolf/sound_variant",
+            "minecraft:wolf/variant",
+        ] {
+            let mut a = ItemStack::new("minecraft:stone", 1);
+            let mut b = ItemStack::new("minecraft:stone", 1);
+            a.data_mut()
+                .set_other(component, Some(Tag::String("minecraft:classic".into())));
+            for alias in ["classic", ":classic", "minecraft:classic"] {
+                b.data_mut()
+                    .set_other(component, Some(Tag::String(alias.into())));
+                assert!(component_equal(component, &a, &b));
+            }
+            b.data_mut()
+                .set_other(component, Some(Tag::String("example:classic".into())));
+            assert!(!component_equal(component, &a, &b));
+            a.data_mut()
+                .set_other(component, Some(Tag::String("example:classic".into())));
+            assert!(component_equal(component, &a, &b));
+            a.data_mut()
+                .set_other(component, Some(Tag::String("Classic".into())));
+            b.data_mut()
+                .set_other(component, Some(Tag::String("Classic".into())));
+            assert!(!component_equal(component, &a, &b));
+            b.data_mut().set_other(component, None);
+            assert!(!component_equal(component, &a, &b));
+        }
+    }
     #[test]
     fn decoded_component_equality_borrows_maps_and_plain_text() {
         let mut a = ItemStack::new("minecraft:stone", 1);
