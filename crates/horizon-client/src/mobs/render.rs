@@ -2951,9 +2951,9 @@ mod tests {
         (mob, data)
     }
 
-    /// The mods' post hooks' posed parts are kept from the body's own draw, on every entry the game draws
-    /// a mob or player through (CPU, GPU, layers only), and keeping them changes nothing drawn
-    /// (#2060, #2464).
+    // The mods' post hooks' posed parts are kept from the body's own draw, on every entry the game draws
+    // a mob or player through (CPU, GPU, layers only), and keeping them changes nothing drawn
+    // (#2060, #2464).
     include!("render_pose_tests.rs");
 
     /// A part `render_player_pre` hid leaves the body, after Skin Customization, while the armour

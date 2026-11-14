@@ -250,7 +250,7 @@ fn posed_parts_are_the_poses_the_draw_made_and_change_nothing() {
         0.0,
     );
     let table = super::super::villager::ResolvedProfessions::vanilla();
-    super::super::villager_client::install(&table, &Default::default());
+    super::villager_client::install(&table, &Default::default());
     layered.extra.profession = super::super::villager::ProfessionState::Vanilla(5);
     assert_eq!(layers(&layered, 0.0).len(), 3, "type, profession and level");
     let mut nose = mod_api::HiddenParts::default();
@@ -275,16 +275,16 @@ fn posed_parts_are_the_poses_the_draw_made_and_change_nothing() {
             Resource::bytes(br#"{"villager":{"hat":"full"}}"#.to_vec()),
         ),
     ]));
-    super::super::villager_client::install(
+    super::villager_client::install(
         &table,
         &super::super::villager_hats::VillagerHats::load(&source),
     );
-    assert!(!super::super::villager_client::type_hat_shown(
+    assert!(!super::villager_client::type_hat_shown(
         &layered.extra.profession,
         false,
         layered.extra.variant
     ));
     assert_eq!(cpu(&layered, nose), cpu(&layered, Default::default()) - 12);
     assert_eq!(gpu(&layered, nose), gpu(&layered, Default::default()) - 12);
-    super::super::villager_client::install(&table, &Default::default());
+    super::villager_client::install(&table, &Default::default());
 }
