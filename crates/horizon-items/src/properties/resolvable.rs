@@ -167,7 +167,6 @@ mod tests {
         assert!(key.matches_str(":stone"));
         assert!(!key.matches_str("mod:stone"));
         assert!(!key.matches_str("minecraft:stone_extra"));
-        assert_eq!(key.utf16_len(), 15);
         for (raw, snapshot) in [
             ("mod:path", "mod:path"),
             ("minecraft:", "minecraft:"),
@@ -180,6 +179,22 @@ mod tests {
         let id = identifier(&raw).unwrap();
         assert!(!id.matches_str("minecraft:stone:extra"));
         assert!(!id.matches_str("minecraft:stöne"));
+    }
+
+    #[test]
+    fn identifier_utf16_lengths_match_canonical_keys() {
+        for (raw, canonical, length) in [
+            ("stone", "minecraft:stone", 15),
+            ("provider", "minecraft:provider", 18),
+            (":", "minecraft:", 10),
+            ("", "minecraft:", 10),
+            ("a:b", "a:b", 3),
+        ] {
+            let raw = Tag::String(raw.into());
+            let key = identifier(&raw).unwrap();
+            assert_eq!(key.utf16_len(), length);
+            assert_eq!(key.to_tag(), Tag::String(canonical.into()));
+        }
     }
 
     #[test]
@@ -196,16 +211,15 @@ mod tests {
             int(&Tag::String("provider/path".into())).unwrap().to_tag(),
             Tag::String("minecraft:provider/path".into())
         );
-        for (a, b, canonical_len) in [
-            ("provider", "minecraft:provider", 18),
-            (":", "minecraft:", 10),
-            ("", "minecraft:", 10),
+        for (a, b) in [
+            ("provider", "minecraft:provider"),
+            (":", "minecraft:"),
+            ("", "minecraft:"),
         ] {
             let a = Tag::String(a.into());
             let b = Tag::String(b.into());
             assert_eq!(int(&a).unwrap(), int(&b).unwrap());
             assert_eq!(float(&a).unwrap(), float(&b).unwrap());
-            assert_eq!(identifier(&a).unwrap().utf16_len(), canonical_len);
         }
         let prefixed = [
             u16::from(b'#'),
@@ -215,7 +229,6 @@ mod tests {
         ];
         let value = Tag::String("a:b".into());
         assert_eq!(identifier_units(&prefixed[1..]), identifier(&value));
-        assert_eq!(identifier(&value).unwrap().utf16_len(), 3);
         assert!(identifier_units(&[0xd800]).is_none());
         let zero = Tag::Float(0.0_f32.to_bits());
         let negative_zero = Tag::Double((-0.0_f64).to_bits());

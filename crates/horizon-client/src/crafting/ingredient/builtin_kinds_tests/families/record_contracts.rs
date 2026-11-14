@@ -201,6 +201,16 @@ fn tracker_and_container_optional_nulls_preserve_defaults_but_required_nulls_fai
     for (id, json, expected) in [
         (
             "minecraft:lodestone_tracker",
+            json!({"target":null}),
+            Tag::Compound(Default::default()),
+        ),
+        (
+            "minecraft:lodestone_tracker",
+            json!({"tracked":null}),
+            Tag::Compound(Default::default()),
+        ),
+        (
+            "minecraft:lodestone_tracker",
             json!({"target":null,"tracked":null}),
             Tag::Compound(Default::default()),
         ),
