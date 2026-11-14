@@ -502,17 +502,22 @@ fn container_loot_component_recipe_decodes_validates_and_matches() {
     ] {
         let source = ingredient_json(payload, false);
         assert!(Ingredient::parse(&source, &items).is_none());
-        let rule = IngredientRule::Components {
-            patch: crate::json_nbt::json_to_compound(source["components"].as_object().unwrap())
-                .unwrap(),
-            removed: Vec::new(),
-            strict: false,
-        };
-        let error = components::validate(&rule, &items).unwrap_err();
-        assert!(
-            error.contains("component minecraft:container_loot:"),
-            "{error}"
-        );
+        match crate::json_nbt::json_to_compound(source["components"].as_object().unwrap()) {
+            Ok(patch) => {
+                let rule = IngredientRule::Components {
+                    patch,
+                    removed: Vec::new(),
+                    strict: false,
+                };
+                let error = components::validate(&rule, &items).unwrap_err();
+                assert!(
+                    error.contains("component minecraft:container_loot:"),
+                    "{error}"
+                );
+            }
+            // Nested null is refused before a component payload reaches NbtOps.
+            Err(error) => assert_eq!(error, horizon_core::json_nbt::JsonNbtError::NestedNull),
+        }
         let loaded = recipes(source);
         assert!(loaded.recipe("fixture:loot").is_none());
         assert!(!loaded.recipe_matches(
