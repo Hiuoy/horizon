@@ -152,8 +152,10 @@ fn rabbit_variant_recipe_codec_presence_and_borrowed_matching() {
     egg.data_mut().set_other("minecraft:custom_data", None);
     egg.data_mut()
         .set_loot_component("minecraft:rabbit/variant", &None);
-    egg.data_mut()
-        .set_loot_component("!minecraft:rabbit/variant", &None);
+    egg.data_mut().set_loot_component(
+        "!minecraft:rabbit/variant",
+        &Some(Tag::Compound(Default::default())),
+    );
     assert!(exact.craft(&context, &[Some(egg.clone())], 1).is_none());
     assert!(removal.craft(&context, &[Some(egg.clone())], 1).is_some());
     egg.data_mut().set_loot_component(
