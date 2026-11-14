@@ -1091,6 +1091,61 @@ pub fn suggest_predicate(builder: &mut SuggestionsBuilder, reg: &Registries) {
     PREDICATE.with(|g| g.parse_for_suggestions_with(builder, Some(reg)));
 }
 
+/// `LodestoneTracker.CODEC`: optional GlobalPos and a strict optional boolean.
+fn lodestone_tracker(value: &Tag) -> Result<Tag, String> {
+    let tracker = horizon_items::item_data::ingredient_components::lodestone_tracker(value)?;
+    let mut fields = Compound::new();
+    if let Some((dimension, pos)) = tracker.target {
+        // ResourceKey.codec uses Identifier.CODEC, not a dimension registry lookup.
+        let target = Tag::compound([
+            ("dimension", identifier_value(dimension)?),
+            ("pos", Tag::IntArray(pos.to_vec())),
+        ]);
+        fields.insert("target".into(), target);
+    }
+    if !tracker.tracked {
+        fields.insert("tracked".into(), Tag::Byte(0));
+    }
+    Ok(Tag::Compound(fields))
+}
+
+/// `TooltipDisplay.CODEC` and `DataComponentType.CODEC`, using the live registry.
+fn tooltip_display(value: &Tag, reg: &Registries) -> Result<Tag, String> {
+    let display = horizon_items::properties::tooltip_display::TooltipDisplay::parse(value)
+        .ok_or("Invalid tooltip display")?;
+    let mut hidden = Vec::new();
+    for id in display.components() {
+        let tag = id.to_tag();
+        let Tag::String(key) = &tag else {
+            unreachable!("identifier tag")
+        };
+        let key = key.to_string_lossy();
+        if !reg.ids("minecraft:data_component_type").contains(&key)
+            && !reg.persistent_components.contains(&key)
+            && horizon_protocol::item::custom::id(&key).is_none()
+        {
+            return Err(format!("Unknown data component type: {key}"));
+        }
+        if !hidden.contains(&tag) {
+            hidden.push(tag);
+        }
+    }
+    Ok(Tag::compound([
+        ("hide_tooltip", Tag::Byte(i8::from(display.hide_tooltip))),
+        ("hidden_components", Tag::List(hidden)),
+    ]))
+}
+
+/// `SeededContainerLoot.CODEC`: a resource key (not a registry lookup) and a long.
+fn container_loot(value: &Tag) -> Result<Tag, String> {
+    let (table, seed) =
+        horizon_items::item_data::ingredient_components::container_loot_fields(value)?;
+    Ok(Tag::compound([
+        ("loot_table", identifier_value(table)?),
+        ("seed", Tag::Long(seed)),
+    ]))
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1736,59 +1791,4 @@ mod tests {
             Err("Unknown registry key in ResourceKey[minecraft:root / minecraft:block_entity_type]: example:nope".into())
         );
     }
-}
-
-/// `LodestoneTracker.CODEC`: optional GlobalPos and a strict optional boolean.
-fn lodestone_tracker(value: &Tag) -> Result<Tag, String> {
-    let tracker = horizon_items::item_data::ingredient_components::lodestone_tracker(value)?;
-    let mut fields = Compound::new();
-    if let Some((dimension, pos)) = tracker.target {
-        // ResourceKey.codec uses Identifier.CODEC, not a dimension registry lookup.
-        let target = Tag::compound([
-            ("dimension", identifier_value(dimension)?),
-            ("pos", Tag::IntArray(pos.to_vec())),
-        ]);
-        fields.insert("target".into(), target);
-    }
-    if !tracker.tracked {
-        fields.insert("tracked".into(), Tag::Byte(0));
-    }
-    Ok(Tag::Compound(fields))
-}
-
-/// `TooltipDisplay.CODEC` and `DataComponentType.CODEC`, using the live registry.
-fn tooltip_display(value: &Tag, reg: &Registries) -> Result<Tag, String> {
-    let display = horizon_items::properties::tooltip_display::TooltipDisplay::parse(value)
-        .ok_or("Invalid tooltip display")?;
-    let mut hidden = Vec::new();
-    for id in display.components() {
-        let tag = id.to_tag();
-        let Tag::String(key) = &tag else {
-            unreachable!("identifier tag")
-        };
-        let key = key.to_string_lossy();
-        if !reg.ids("minecraft:data_component_type").contains(&key)
-            && !reg.persistent_components.contains(&key)
-            && horizon_protocol::item::custom::id(&key).is_none()
-        {
-            return Err(format!("Unknown data component type: {key}"));
-        }
-        if !hidden.contains(&tag) {
-            hidden.push(tag);
-        }
-    }
-    Ok(Tag::compound([
-        ("hide_tooltip", Tag::Byte(i8::from(display.hide_tooltip))),
-        ("hidden_components", Tag::List(hidden)),
-    ]))
-}
-
-/// `SeededContainerLoot.CODEC`: a resource key (not a registry lookup) and a long.
-fn container_loot(value: &Tag) -> Result<Tag, String> {
-    let (table, seed) =
-        horizon_items::item_data::ingredient_components::container_loot_fields(value)?;
-    Ok(Tag::compound([
-        ("loot_table", identifier_value(table)?),
-        ("seed", Tag::Long(seed)),
-    ]))
 }

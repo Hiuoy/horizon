@@ -24,10 +24,14 @@ impl PartialEq for Identifier<'_> {
 impl Eq for Identifier<'_> {}
 
 impl Identifier<'_> {
+    /// Canonical UTF-16 length without allocating the encoded identifier.
+    pub fn utf16_len(&self) -> usize {
+        self.namespace.map_or("minecraft".len(), <[u16]>::len) + 1 + self.path.len()
+    }
+
     /// Encode the canonical key once while loading, not while matching a stack.
     pub fn to_tag(self) -> Tag {
-        let namespace_len = self.namespace.map_or("minecraft".len(), <[u16]>::len);
-        let mut value = Vec::with_capacity(namespace_len + 1 + self.path.len());
+        let mut value = Vec::with_capacity(self.utf16_len());
         if let Some(namespace) = self.namespace {
             value.extend_from_slice(namespace);
         } else {
@@ -175,6 +179,22 @@ mod tests {
         let id = identifier(&raw).unwrap();
         assert!(!id.matches_str("minecraft:stone:extra"));
         assert!(!id.matches_str("minecraft:stöne"));
+    }
+
+    #[test]
+    fn identifier_utf16_lengths_match_canonical_keys() {
+        for (raw, canonical, length) in [
+            ("stone", "minecraft:stone", 15),
+            ("provider", "minecraft:provider", 18),
+            (":", "minecraft:", 10),
+            ("", "minecraft:", 10),
+            ("a:b", "a:b", 3),
+        ] {
+            let raw = Tag::String(raw.into());
+            let key = identifier(&raw).unwrap();
+            assert_eq!(key.utf16_len(), length);
+            assert_eq!(key.to_tag(), Tag::String(canonical.into()));
+        }
     }
 
     #[test]
