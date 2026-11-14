@@ -869,8 +869,11 @@ def index(dist: Path, nightly: str | None, previous: tuple[str, Path] | None = N
          *(["--previous", previous[0], str(previous[1])] if previous else [])], cwd=ROOT)
 
 
-# Warns here, ahead of Windows' hard 65,535 (the linker's own failure), so a growing export list is seen first.
-EXPORT_WARNING = 49_000
+# Windows refuses a DLL past 65,535 exported names at link time. `exports` warns past 80% of that and fails past 90%, so
+# a growing export list stops a package build with room left to cut it.
+EXPORT_LIMIT = 65_535
+EXPORT_WARNING = EXPORT_LIMIT * 8 // 10
+EXPORT_FAILURE = EXPORT_LIMIT * 9 // 10
 
 
 def export_count(library: Path) -> int:
@@ -892,18 +895,23 @@ def export_count(library: Path) -> int:
 
 
 def exports(out: Path) -> None:
-    """Report every DLL's Windows export count (#589), the separate wasm runtime included, and warn on
-    one near the limit: the linker's own failure at 65,535 is the real one."""
+    """Report every DLL's Windows export count (#589), the separate wasm runtime included; warn on one past 80% of
+    the limit and fail, after reporting them all, on any past 90%."""
+    over = []
     for library in sorted((out / "deps").glob("*.dll")):
         names = export_count(library)
-        print(f"{library.name}: {names} exported names (Windows' limit is 65,535)")
-        if names >= EXPORT_WARNING:
-            warning = (f"{library.name} exports {names:,} names, {65_535 - names:,} short of Windows' 65,535: "
-                       "cut exported names before adding points or internals (#589)")
+        print(f"{library.name}: {names} exported names (Windows' limit is {EXPORT_LIMIT:,})")
+        if names > EXPORT_WARNING:
+            warning = (f"{library.name} exports {names:,} names, {EXPORT_LIMIT - names:,} short of Windows' "
+                       f"{EXPORT_LIMIT:,}: cut exported names before adding points or internals (#589)")
             print(f"::warning::{warning}")
             if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
                 with open(summary, "a", encoding="utf-8") as file:
                     file.write(f"- {warning}\n")
+        if names > EXPORT_FAILURE:
+            over.append(f"{library.name} ({names:,})")
+    if over:
+        sys.exit(f"past 90% of Windows' {EXPORT_LIMIT:,} exported names: {', '.join(over)}; cut exported names (#589)")
 
 
 def main() -> None:

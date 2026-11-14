@@ -97,6 +97,7 @@ jobs:
       - name: The game executable starts and loads the game's libraries
         timeout-minutes: 10
         run: python tools/prebuilt_game.py start prebuilt
+      # Warns past 80% of Windows' 65,535 exported names per DLL and fails past 90%.
       - name: Exported names, toward Windows' 65,535
         run: python tools/prebuilt_game.py exports prebuilt | tee -a "$GITHUB_STEP_SUMMARY"
       # The leg's assets, named for its target and side; the layout's number is in each identity (package_format).
