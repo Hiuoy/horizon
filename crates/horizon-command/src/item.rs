@@ -782,8 +782,9 @@ mod tests {
                 format!("minecraft:{builtin}"),
             ] {
                 assert_eq!(
-                    decoded_component_value(component, &Tag::String(raw.into()), &reg).unwrap(),
-                    Tag::String(format!("minecraft:{builtin}").into()),
+                    decoded_component_value(component, &Tag::String(raw.as_str().into()), &reg)
+                        .unwrap(),
+                    Tag::String(format!("minecraft:{builtin}").as_str().into()),
                 );
             }
             assert_eq!(
