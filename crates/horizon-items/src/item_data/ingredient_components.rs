@@ -194,6 +194,7 @@ pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
             }
         }
         "minecraft:rarity" => rarity(a) == rarity(b),
+        "minecraft:tooltip_display" => tooltip_display_equal(a, b),
         "minecraft:ominous_bottle_amplifier" => ominous_amplifier(a) == ominous_amplifier(b),
         // DyeColor.CODEC's canonical NbtOps value is its exact serialized name.
         // Live stacks retain these colors in `other`; borrow UTF-16 without palette scans.

@@ -65,6 +65,9 @@ pub const DECODED_COMPONENTS: &[&str] = &[
 /// Registered components without a shared decoder retain their exact stored value.
 /// Registration is checked by the caller; this helper only rejects failed decodes.
 pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Result<Tag, String> {
+    if id == "minecraft:tooltip_display" {
+        return tooltip_display(value, reg);
+    }
     if !DECODED_COMPONENTS.contains(&id) {
         return Ok(value.clone());
     }
@@ -276,6 +279,7 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
         }
         "minecraft:rarity" => string_enum(t, &["common", "uncommon", "rare", "epic"]),
         "minecraft:enchantments" | "minecraft:stored_enchantments" => enchantment_map(t, reg),
+        "minecraft:tooltip_display" => tooltip_display(t, reg).map(|_| ()),
         // DataComponents.ENCHANTMENT_GLINT_OVERRIDE: Codec.BOOL through NbtOps.
         "minecraft:enchantment_glint_override" => horizon_items::item_data::component_bool(t)
             .map(|_| ())

@@ -2485,3 +2485,234 @@ fn lodestone_tracker_component_recipes_decode_validate_and_match() {
         check(&recipes, &stack(invalid), None);
     }
 }
+
+#[test]
+fn tooltip_display_recipe_uses_registered_component_sets_and_numeric_booleans() {
+    use crate::crafting::{Recipe, Recipes};
+    use horizon_world::loot::PackOverlay;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    let mut items = Items::empty();
+    let registry = Arc::make_mut(&mut items.component_registry);
+    registry
+        .by_registry
+        .entry("minecraft:data_component_type".into())
+        .or_default()
+        .ids = vec![
+        "minecraft:tooltip_display".into(),
+        "minecraft:damage".into(),
+        "minecraft:unbreakable".into(),
+        "minecraft:banner_patterns".into(),
+        "fixture:transient".into(),
+    ];
+    // A declared persistent mod component need not have a built-in payload decoder.
+    registry
+        .persistent_components
+        .push("fixture:declared".into());
+    // Synthetic test prototype, not a claim about vanilla stone's defaults.
+    items.component_defaults = Arc::new(std::collections::HashMap::from([(
+        "minecraft:stone".into(),
+        crate::json_nbt::json_to_compound(json!({
+            "minecraft:tooltip_display": {
+                "hide_tooltip": -0.0,
+                "hidden_components": ["fixture:transient", "damage", "fixture:declared", "unbreakable"]
+            }
+        }).as_object().unwrap()).unwrap(),
+    )]));
+    let root = tempfile::tempdir().unwrap();
+    let load = load();
+    let context = load.loop_context(LoopSide::Server, []);
+    let compile = |item: &str, patch: serde_json::Value, strict: bool| {
+        Recipes::from_sources(root.path(), &items, &PackOverlay::NONE, vec![(
+            "fixture:tooltip".into(),
+            json!({
+                "type":"minecraft:crafting_shaped", "pattern":["X"],
+                "key":{"X":{"type":"neoforge:components","items":item,"components":patch,"strict":strict}},
+                "result":{"id":"minecraft:diamond"}
+            }),
+        )], &load).unwrap()
+    };
+    let patch = json!({"minecraft:tooltip_display":{
+        "hide_tooltip":0,
+        "hidden_components":["unbreakable","fixture:declared","damage","fixture:transient","damage"]
+    }});
+    let recipe = compile("minecraft:stone", patch.clone(), false);
+    let strict = compile("minecraft:stone", patch, true);
+    let stone = ItemStack::new("minecraft:stone", 1);
+    let outcome = |recipes: &Recipes, stack: &ItemStack| {
+        recipes
+            .craft(&context, &[Some(stack.clone())], 1)
+            .map(|stack| stack.item)
+    };
+    assert_eq!(
+        outcome(&recipe, &stone).as_deref(),
+        Some("minecraft:diamond")
+    );
+    assert_eq!(
+        outcome(&strict, &stone).as_deref(),
+        Some("minecraft:diamond")
+    );
+    assert!(outcome(&recipe, &ItemStack::new("minecraft:dirt", 1)).is_none());
+    let mut explicit = stone.clone();
+    explicit.data_mut().set_other(
+        "minecraft:tooltip_display",
+        Some(Tag::compound([
+            ("hide_tooltip", Tag::Double((-0.0_f64).to_bits())),
+            (
+                "hidden_components",
+                Tag::List(vec![
+                    Tag::String("fixture:declared".into()),
+                    Tag::String("minecraft:damage".into()),
+                    Tag::String("minecraft:unbreakable".into()),
+                    Tag::String("fixture:transient".into()),
+                    Tag::String(":damage".into()),
+                ]),
+            ),
+            ("ignored", Tag::Int(17)),
+        ])),
+    );
+    assert_eq!(
+        outcome(&strict, &explicit).as_deref(),
+        Some("minecraft:diamond")
+    );
+    let Recipe::Shaped { cells, .. } = &recipe.crafting[0].1 else {
+        panic!("shaped recipe");
+    };
+    let predicate = cells[0].as_ref().unwrap();
+    let (_, counts) = horizon_threads::allocation_probe::measure(|| {
+        for _ in 0..32 {
+            assert!(predicate.test_in(&context, std::hint::black_box(&explicit)));
+            assert!(predicate.test_in(&context, std::hint::black_box(&stone)));
+        }
+    });
+    assert_eq!(counts.calls, 0, "{counts:?}");
+    assert_eq!(counts.bytes, 0);
+    explicit.damage = 3;
+    assert!(outcome(&recipe, &explicit).is_some());
+    assert!(
+        outcome(&strict, &explicit).is_none(),
+        "strictness counts extra components"
+    );
+    explicit.damage = 0;
+    for value in [
+        Tag::compound([("hide_tooltip", Tag::Byte(1))]),
+        Tag::compound([(
+            "hidden_components",
+            Tag::List(vec![Tag::String("damage".into())]),
+        )]),
+        Tag::compound([(
+            "hidden_components",
+            Tag::List(vec![
+                Tag::String("damage".into()),
+                Tag::String("fixture:unknown".into()),
+            ]),
+        )]),
+    ] {
+        explicit
+            .data_mut()
+            .set_other("minecraft:tooltip_display", Some(value));
+        assert!(outcome(&recipe, &explicit).is_none());
+    }
+    let empty = compile(
+        "minecraft:stone",
+        json!({"minecraft:tooltip_display":{}}),
+        false,
+    );
+    for collection in [
+        Tag::List(vec![]),
+        Tag::ByteArray(vec![]),
+        Tag::IntArray(vec![]),
+        Tag::LongArray(vec![]),
+    ] {
+        explicit.data_mut().set_other(
+            "minecraft:tooltip_display",
+            Some(Tag::compound([
+                ("hide_tooltip", Tag::Float((-0.0_f32).to_bits())),
+                ("hidden_components", collection),
+            ])),
+        );
+        assert_eq!(
+            outcome(&empty, &explicit).as_deref(),
+            Some("minecraft:diamond")
+        );
+    }
+    let hidden = compile(
+        "minecraft:stone",
+        json!({"minecraft:tooltip_display":{"hide_tooltip":0.5}}),
+        false,
+    );
+    explicit.data_mut().set_other(
+        "minecraft:tooltip_display",
+        Some(Tag::compound([("hide_tooltip", Tag::Long(1_i64 << 32))])),
+    );
+    assert_eq!(
+        outcome(&hidden, &explicit).as_deref(),
+        Some("minecraft:diamond")
+    );
+    explicit.data_mut().set_other(
+        "minecraft:tooltip_display",
+        Some(Tag::compound([(
+            "hide_tooltip",
+            Tag::Double(f64::NAN.to_bits()),
+        )])),
+    );
+    assert_eq!(
+        outcome(&hidden, &explicit).as_deref(),
+        Some("minecraft:diamond")
+    );
+    let removal = compile(
+        "minecraft:stone",
+        json!({"!minecraft:tooltip_display":{}}),
+        true,
+    );
+    assert!(
+        outcome(&removal, &stone).is_none(),
+        "the prototype is present"
+    );
+    let mut removed = stone.clone();
+    removed.data_mut().set_other(
+        "!minecraft:tooltip_display",
+        Some(Tag::compound([] as [(&str, Tag); 0])),
+    );
+    assert!(
+        outcome(&recipe, &removed).is_none(),
+        "removal wins over the prototype"
+    );
+    assert_eq!(
+        outcome(&removal, &removed).as_deref(),
+        Some("minecraft:diamond")
+    );
+    let banner = compile(
+        "minecraft:white_banner",
+        json!({"minecraft:tooltip_display":{
+            "hidden_components":["banner_patterns","minecraft:banner_patterns"]
+        }}),
+        false,
+    );
+    let mut ominous = ItemStack::new("minecraft:white_banner", 1);
+    ominous.data_mut().ominous_banner = true;
+    assert_eq!(
+        outcome(&banner, &ominous).as_deref(),
+        Some("minecraft:diamond")
+    );
+
+    for invalid in [
+        json!(true),
+        json!({"hide_tooltip":"true"}),
+        json!({"hide_tooltip":[]}),
+        json!({"hidden_components":"damage"}),
+        json!({"hidden_components":[1]}),
+        json!({"hidden_components":["damage","fixture:unknown"]}),
+        json!({"hidden_components":["Bad:identifier"]}),
+    ] {
+        let rejected = compile(
+            "minecraft:stone",
+            json!({"minecraft:tooltip_display":invalid}),
+            false,
+        );
+        assert!(rejected.crafting.is_empty());
+        assert!(rejected.by_type.values().all(|recipes| recipes.is_empty()));
+        assert!(outcome(&rejected, &stone).is_none());
+    }
+}
