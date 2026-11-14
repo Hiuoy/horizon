@@ -2136,3 +2136,352 @@ fn recipes_component_cooking_decodes_keys_and_matches_without_allocations() {
     stack.count = 0;
     check(&empty, &stack, false);
 }
+
+#[test]
+fn lodestone_tracker_component_recipes_decode_validate_and_match() {
+    const ID: &str = "minecraft:lodestone_tracker";
+    fn ingredient(patch: Value, strict: bool) -> Value {
+        serde_json::json!({
+            "type":"neoforge:components", "items":"minecraft:compass",
+            "components":patch, "strict":strict
+        })
+    }
+    fn recipe(ingredient: Value) -> Value {
+        serde_json::json!({
+            "type":"minecraft:smelting", "ingredient":ingredient,
+            "result":{"id":"minecraft:diamond"}, "experience":0.0, "cookingtime":20
+        })
+    }
+    fn book(items: &Items, sources: Vec<(&str, Value)>) -> crate::crafting::Recipes {
+        let root = tempfile::tempdir().unwrap();
+        crate::crafting::Recipes::from_sources(
+            root.path(),
+            items,
+            &horizon_world::loot::PackOverlay::NONE,
+            sources
+                .into_iter()
+                .map(|(id, value)| (id.into(), value))
+                .collect(),
+            &load(),
+        )
+        .unwrap()
+    }
+    fn stack(value: Tag) -> ItemStack {
+        let mut stack = ItemStack::new("minecraft:compass", 1);
+        stack.data_mut().set_loot_component(ID, &Some(value));
+        stack
+    }
+    fn target(dimension: Tag, pos: Tag) -> Tag {
+        Tag::compound([(
+            "target",
+            Tag::compound([("dimension", dimension), ("pos", pos)]),
+        )])
+    }
+    let mut items = Items::empty();
+    items.component_defaults = std::sync::Arc::new(std::collections::HashMap::from([(
+        "minecraft:compass".into(),
+        crate::json_nbt::json_to_compound(
+            serde_json::json!({
+                "minecraft:lodestone_tracker":{
+                    "target":{"dimension":":unregistered/dimension","pos":[1,-2,3]},
+                    "tracked":-2
+                },
+                "minecraft:max_stack_size":64
+            })
+            .as_object()
+            .unwrap(),
+        )
+        .unwrap(),
+    )]));
+    let load = load();
+    let context = load.loop_context(LoopSide::Server, []);
+    let check =
+        |recipes: &crate::crafting::Recipes, candidate: &ItemStack, expected: Option<&str>| {
+            // Build the cooking index outside the candidate-allocation measurement.
+            let _ = recipes.cook(&context, "minecraft:smelting", candidate);
+            let (_, allocations) = horizon_threads::allocation_probe::measure(|| {
+                let cooked = recipes.cook(&context, "minecraft:smelting", candidate);
+                assert_eq!(cooked.map(|recipe| recipe.id.as_str()), expected);
+                if let Some(cooked) = cooked {
+                    assert_eq!(cooked.result.item.as_ref(), "minecraft:diamond");
+                }
+            });
+            assert_eq!(allocations.calls, 0, "{allocations:?}");
+        };
+    let literal: Value = serde_json::from_str(
+        r#"{"target":{"dimension":"unregistered/dimension","pos":[1.9,-2.9,4294967299],"ignored":false},"ignored":{"future":true}}"#,
+    )
+    .unwrap();
+    let patch = serde_json::json!({ID:literal});
+    let recipes = book(
+        &items,
+        vec![("fixture:target", recipe(ingredient(patch.clone(), false)))],
+    );
+    let shown = Ingredient::parse(&ingredient(patch.clone(), false), &items).unwrap();
+    assert_eq!(
+        shown.shown.as_ref().unwrap()[0].data().unwrap().other(ID),
+        Some(&target(
+            Tag::String("minecraft:unregistered/dimension".into()),
+            Tag::IntArray(vec![1, -2, 3]),
+        )),
+    );
+    let plain = ItemStack::new("minecraft:compass", 1);
+    check(&recipes, &plain, Some("fixture:target"));
+    for dimension in [
+        "unregistered/dimension",
+        ":unregistered/dimension",
+        "minecraft:unregistered/dimension",
+    ] {
+        for pos in [
+            Tag::IntArray(vec![1, -2, 3]),
+            Tag::ByteArray(vec![1, 254, 3]),
+            Tag::LongArray(vec![4294967297, -2, 3]),
+            Tag::List(vec![
+                Tag::Short(1),
+                Tag::Float((-2.9f32).to_bits()),
+                Tag::Long(4294967299),
+            ]),
+        ] {
+            check(
+                &recipes,
+                &stack(target(Tag::String(dimension.into()), pos)),
+                Some("fixture:target"),
+            );
+        }
+    }
+    for payload in [
+        r#"{"target":{"dimension":"fixture:unregistered/dimension","pos":[1,-2,3]}}"#,
+        r#"{"target":{"dimension":"Minecraft:unregistered/dimension","pos":[1,-2,3]}}"#,
+        r#"{"target":{"dimension":"unregistered/dimension","pos":[1,-2,4]}}"#,
+        r#"{"target":{"dimension":"unregistered/dimension","pos":[1,-2]}}"#,
+        r#"{"target":{"dimension":"unregistered/dimension","pos":[1,-2,3]},"tracked":false}"#,
+        r#"{"target":{"dimension":"unregistered/dimension","pos":[1,-2,3]},"tracked":"true"}"#,
+        r#"{}"#,
+    ] {
+        let value: Value = serde_json::from_str(payload).unwrap();
+        check(
+            &recipes,
+            &stack(crate::json_nbt::json_to_tag(&value).unwrap()),
+            None,
+        );
+    }
+    let mut empty = plain.clone();
+    empty.count = 0;
+    check(&recipes, &empty, None);
+    check(&recipes, &ItemStack::new("minecraft:stone", 1), None);
+
+    // Strictness counts prototype components, but not unknown record fields.
+    let strict = book(
+        &items,
+        vec![("fixture:strict", recipe(ingredient(patch.clone(), true)))],
+    );
+    check(&strict, &plain, None);
+    let mut complete_patch = patch.clone();
+    complete_patch["minecraft:max_stack_size"] = serde_json::json!(64);
+    let complete = book(
+        &items,
+        vec![("fixture:complete", recipe(ingredient(complete_patch, true)))],
+    );
+    check(&complete, &plain, Some("fixture:complete"));
+    let mut extra = plain.clone();
+    extra.data_mut().set_loot_component(
+        "minecraft:custom_data",
+        &Some(Tag::compound([("opaque", Tag::Int(7))])),
+    );
+    check(&complete, &extra, None);
+    check(&recipes, &extra, Some("fixture:target"));
+    let mut without_max = plain.clone();
+    (_, without_max.extra) = crate::item_data::decode_components(Some(&Tag::compound([(
+        "!minecraft:max_stack_size",
+        Tag::Compound(Default::default()),
+    )])));
+    check(&strict, &without_max, Some("fixture:strict"));
+
+    let removal = book(
+        &items,
+        vec![(
+            "fixture:removed",
+            recipe(ingredient(
+                serde_json::json!({"!minecraft:lodestone_tracker":{}}),
+                false,
+            )),
+        )],
+    );
+    check(&removal, &plain, None);
+    let mut removed = plain.clone();
+    (_, removed.extra) = crate::item_data::decode_components(Some(&Tag::compound([(
+        "!minecraft:lodestone_tracker",
+        Tag::Compound(Default::default()),
+    )])));
+    check(&removal, &removed, Some("fixture:removed"));
+    check(&recipes, &removed, None);
+    let mut reset = stack(Tag::Compound(Default::default()));
+    reset.data_mut().set_loot_component(ID, &None);
+    check(&recipes, &reset, Some("fixture:target"));
+    check(&removal, &reset, None);
+
+    // Optional defaults are not defaults for malformed, present fields.
+    for (literal, tracked) in [
+        (r#"{}"#, true),
+        (r#"{"tracked":true,"ignored":5}"#, true),
+        (r#"{"tracked":-0.25}"#, true),
+        (r#"{"tracked":false}"#, false),
+        (r#"{"tracked":0}"#, false),
+    ] {
+        let value: Value = serde_json::from_str(literal).unwrap();
+        let recipes = book(
+            &items,
+            vec![(
+                "fixture:targetless",
+                recipe(ingredient(serde_json::json!({ID:value}), false)),
+            )],
+        );
+        let matching = stack(Tag::compound([("tracked", Tag::Byte(i8::from(tracked)))]));
+        check(&recipes, &matching, Some("fixture:targetless"));
+        check(
+            &recipes,
+            &stack(Tag::compound([("tracked", Tag::Byte(i8::from(!tracked)))])),
+            None,
+        );
+        check(&recipes, &plain, None);
+        if !tracked {
+            for zero in [
+                Tag::Float((-0.0f32).to_bits()),
+                Tag::Double((-0.0f64).to_bits()),
+            ] {
+                check(
+                    &recipes,
+                    &stack(Tag::compound([("tracked", zero)])),
+                    Some("fixture:targetless"),
+                );
+            }
+        } else {
+            check(
+                &recipes,
+                &stack(Tag::Compound(Default::default())),
+                Some("fixture:targetless"),
+            );
+            check(
+                &recipes,
+                &stack(Tag::compound([(
+                    "tracked",
+                    Tag::Double(f64::NAN.to_bits()),
+                )])),
+                Some("fixture:targetless"),
+            );
+        }
+    }
+    // ResourceKey.codec accepts pack-defined keys, even empty identifier paths.
+    for dimension in ["fixture:pack_only", "", ":", "minecraft:"] {
+        let recipes = book(
+            &items,
+            vec![(
+                "fixture:dimension",
+                recipe(ingredient(
+                    serde_json::json!({ID:{
+                        "target":{"dimension":dimension,"pos":[2147483647,-2147483648,0]}
+                    }}),
+                    false,
+                )),
+            )],
+        );
+        let candidate = stack(target(
+            Tag::String(dimension.into()),
+            Tag::List(vec![
+                Tag::Float(f32::INFINITY.to_bits()),
+                Tag::Double(f64::NEG_INFINITY.to_bits()),
+                Tag::Float(f32::NAN.to_bits()),
+            ]),
+        ));
+        check(&recipes, &candidate, Some("fixture:dimension"));
+        check(&recipes, &plain, None);
+    }
+    for units in [vec![0xd800], vec![0xdc00], vec![0xd83d, 0xde00]] {
+        let invalid = target(
+            Tag::String(horizon_core::nbt::JavaString(units)),
+            Tag::IntArray(vec![1, -2, 3]),
+        );
+        assert!(
+            horizon_command::item::decoded_component_value(ID, &invalid, &items.component_registry)
+                .is_err()
+        );
+        assert!(
+            horizon_command::item::decode_component(ID, &invalid, &items.component_registry)
+                .is_err()
+        );
+        check(&recipes, &stack(invalid), None);
+    }
+    for literal in [
+        r#"5"#,
+        r#"true"#,
+        r#""tracker""#,
+        r#"[]"#,
+        r#"{"target":5}"#,
+        r#"{"target":{}}"#,
+        r#"{"target":{"dimension":"overworld"}}"#,
+        r#"{"target":{"pos":[1,2,3]}}"#,
+        r#"{"target":{"dimension":5,"pos":[1,2,3]}}"#,
+        r#"{"target":{"dimension":"Minecraft:overworld","pos":[1,2,3]}}"#,
+        r#"{"target":{"dimension":"minecraft:Overworld","pos":[1,2,3]}}"#,
+        r#"{"target":{"dimension":"bad namespace:path","pos":[1,2,3]}}"#,
+        r#"{"target":{"dimension":"..:path","pos":[1,2,3]}}"#,
+        r#"{"target":{"dimension":"a:b:c","pos":[1,2,3]}}"#,
+        r#"{"target":{"dimension":"overworld","pos":[]}}"#,
+        r#"{"target":{"dimension":"overworld","pos":[1,2]}}"#,
+        r#"{"target":{"dimension":"overworld","pos":[1,2,3,4]}}"#,
+        r#"{"target":{"dimension":"overworld","pos":[1,"2",3]}}"#,
+        r#"{"target":{"dimension":"overworld","pos":5}}"#,
+        r#"{"tracked":"true"}"#,
+        r#"{"tracked":{}}"#,
+        r#"{"tracked":[]}"#,
+    ] {
+        let value: Value = serde_json::from_str(literal).unwrap();
+        let invalid = ingredient(serde_json::json!({ID:value}), false);
+        assert!(Ingredient::parse(&invalid, &items).is_none(), "{literal}");
+        let rule = IngredientRule::Components {
+            patch: crate::json_nbt::json_to_compound(invalid["components"].as_object().unwrap())
+                .unwrap(),
+            removed: Vec::new(),
+            strict: false,
+        };
+        let error = components::validate(&rule, &items).unwrap_err();
+        assert!(
+            error.contains("component minecraft:lodestone_tracker:"),
+            "{error}"
+        );
+        let loaded = book(
+            &items,
+            vec![
+                ("fixture:refused", recipe(invalid)),
+                (
+                    "fixture:kept",
+                    recipe(ingredient(serde_json::json!({ID:{}}), false)),
+                ),
+            ],
+        );
+        assert!(
+            loaded
+                .cooking
+                .iter()
+                .all(|recipe| recipe.id != "fixture:refused")
+        );
+        check(
+            &loaded,
+            &stack(Tag::Compound(Default::default())),
+            Some("fixture:kept"),
+        );
+        check(&loaded, &plain, None);
+    }
+    // Raw NBT can contain End; JSON deliberately refuses nested null first.
+    for invalid in [
+        Tag::End,
+        Tag::compound([("target", Tag::End)]),
+        Tag::compound([("tracked", Tag::End)]),
+    ] {
+        assert!(
+            horizon_command::item::decoded_component_value(ID, &invalid, &items.component_registry)
+                .is_err()
+        );
+        check(&recipes, &stack(invalid), None);
+    }
+}

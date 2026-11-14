@@ -52,6 +52,7 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:custom_name",
     "minecraft:item_name",
     "minecraft:item_model",
+    "minecraft:lodestone_tracker",
     "minecraft:block_entity_data",
     "minecraft:enchantable",
     "minecraft:ominous_bottle_amplifier",
