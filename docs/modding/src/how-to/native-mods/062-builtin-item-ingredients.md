@@ -54,9 +54,19 @@ Native registrations retain their persistent NBT validation contract.
 
 The shared decoder currently covers `damage`, `repair_cost`, `max_damage`,
 `max_stack_size`, `rarity`, `enchantments`, `stored_enchantments`, `custom_name`,
-`item_name`, and `block_entity_data` in the `minecraft` namespace. The other
-112 registered built-ins use stored-value matching while their shared decoders
-are added incrementally in **#3875**. Their absence is not a load refusal.
+`item_name`, `block_entity_data`, and `attack_range` in the `minecraft` namespace.
+The other 111 registered built-ins use stored-value matching while their shared
+decoders are added incrementally in **#3875**. Their absence is not a load refusal.
+
+`attack_range` is a record of optional numeric fields: `min_reach` (default 0),
+`max_reach` (3), `min_creative_reach` (0), `max_creative_reach` (5),
+`hitbox_margin` (0.3), and `mob_factor` (1). The four reach fields accept 0–64,
+the margin 0–1, and the factor 0–2, inclusively after conversion to a 32-bit
+float. No reference identifiers or minimum/maximum ordering constraint apply.
+Unknown record fields are ignored. Raw NBT negative zero, NaN and infinities
+are rejected; integral JSON negative zero is converted to NBT positive zero.
+Recipe values are normalized at load, while effective stack values and item
+prototypes are compared without copying or allocating.
 
 Component ingredient displays contain the patch, including removals. Difference
 lists retain the base list and remove only items whose default stack passes the

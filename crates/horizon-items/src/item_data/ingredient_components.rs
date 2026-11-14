@@ -40,6 +40,18 @@ pub fn removed(stack: &ItemStack, id: &str) -> bool {
 /// Presence is checked by the caller, so empty decoded enchantment maps compare equal.
 pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
     match id {
+        "minecraft:attack_range" => {
+            let decoded = |stack: &ItemStack| {
+                stack
+                    .data()
+                    .and_then(|data| data.other(id))
+                    .and_then(crate::properties::attack_range::decode)
+            };
+            match (decoded(a), decoded(b)) {
+                (Some(a), Some(b)) => a == b,
+                _ => false,
+            }
+        }
         "minecraft:damage" => a.damage == b.damage,
         "minecraft:repair_cost" => {
             a.data().map_or(0, |d| d.repair_cost) == b.data().map_or(0, |d| d.repair_cost)
