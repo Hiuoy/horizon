@@ -613,10 +613,11 @@ impl Launcher {
                 tr("Another build is running").into(),
                 tr("This instance's build waits until it finishes.").to_string(),
             )
-        } else if self
-            .native_worlds
-            .as_ref()
-            .is_some_and(|stake| stake.unbuilt.iter().any(|id| id == mod_id))
+        } else if self.native_for.as_deref() == Some(instance.id.as_str())
+            && self
+                .native_worlds
+                .as_ref()
+                .is_some_and(|stake| stake.unbuilt.iter().any(|id| id == mod_id))
         {
             // The stop on screen is about this mod: its fit was only a prediction.
             (
@@ -707,15 +708,18 @@ impl Launcher {
                     cx.notify();
                 }))
             };
+            // The worlds choice on the panel is the only way on while it is pending.
+            let worlds_pending = self.native_for.as_deref() == Some(instance.id.as_str())
+                && self.native_worlds.is_some();
             let build_now = ui::menu_item(
                 "route-build",
                 tr("Build now").into(),
                 tr("Builds the game with your mods").to_string(),
-                busy || state == State::NoMods,
+                busy || state == State::NoMods || worlds_pending,
                 &t,
             )
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                if this.native_step.is_some() {
+                if this.native_step.is_some() || this.native_worlds.is_some() {
                     return;
                 }
                 this.mods.route_open = None;
