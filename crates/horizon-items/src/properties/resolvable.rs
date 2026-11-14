@@ -24,10 +24,14 @@ impl PartialEq for Identifier<'_> {
 impl Eq for Identifier<'_> {}
 
 impl Identifier<'_> {
+    /// Canonical UTF-16 length without allocating the encoded identifier.
+    pub fn utf16_len(&self) -> usize {
+        self.namespace.map_or("minecraft".len(), <[u16]>::len) + 1 + self.path.len()
+    }
+
     /// Encode the canonical key once while loading, not while matching a stack.
     pub fn to_tag(self) -> Tag {
-        let namespace_len = self.namespace.map_or("minecraft".len(), <[u16]>::len);
-        let mut value = Vec::with_capacity(namespace_len + 1 + self.path.len());
+        let mut value = Vec::with_capacity(self.utf16_len());
         if let Some(namespace) = self.namespace {
             value.extend_from_slice(namespace);
         } else {
@@ -163,6 +167,7 @@ mod tests {
         assert!(key.matches_str(":stone"));
         assert!(!key.matches_str("mod:stone"));
         assert!(!key.matches_str("minecraft:stone_extra"));
+        assert_eq!(key.utf16_len(), 15);
         for (raw, snapshot) in [
             ("mod:path", "mod:path"),
             ("minecraft:", "minecraft:"),
@@ -191,15 +196,16 @@ mod tests {
             int(&Tag::String("provider/path".into())).unwrap().to_tag(),
             Tag::String("minecraft:provider/path".into())
         );
-        for (a, b) in [
-            ("provider", "minecraft:provider"),
-            (":", "minecraft:"),
-            ("", "minecraft:"),
+        for (a, b, canonical_len) in [
+            ("provider", "minecraft:provider", 18),
+            (":", "minecraft:", 10),
+            ("", "minecraft:", 10),
         ] {
             let a = Tag::String(a.into());
             let b = Tag::String(b.into());
             assert_eq!(int(&a).unwrap(), int(&b).unwrap());
             assert_eq!(float(&a).unwrap(), float(&b).unwrap());
+            assert_eq!(identifier(&a).unwrap().utf16_len(), canonical_len);
         }
         let prefixed = [
             u16::from(b'#'),
@@ -209,6 +215,7 @@ mod tests {
         ];
         let value = Tag::String("a:b".into());
         assert_eq!(identifier_units(&prefixed[1..]), identifier(&value));
+        assert_eq!(identifier(&value).unwrap().utf16_len(), 3);
         assert!(identifier_units(&[0xd800]).is_none());
         let zero = Tag::Float(0.0_f32.to_bits());
         let negative_zero = Tag::Double((-0.0_f64).to_bits());
