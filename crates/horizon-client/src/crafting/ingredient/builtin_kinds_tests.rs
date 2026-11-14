@@ -272,6 +272,7 @@ fn attack_range_persistent_codec_matches_recipes_without_candidate_allocations()
         stack
     }
     let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("data/minecraft/recipe")).unwrap();
     let load = load();
     let context = load.loop_context(LoopSide::Server, []);
     let mut items = Items::empty();
