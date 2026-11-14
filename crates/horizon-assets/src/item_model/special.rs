@@ -4,7 +4,6 @@
 use super::{Result, float, get, ident, object, required, string};
 use crate::json::error as err;
 use serde_json::{Map, Value, json};
-use std::{collections::BTreeSet, sync::Mutex};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SpecialKind {
@@ -98,28 +97,6 @@ fn skull_kind(v: &Value) -> Result<String> {
 }
 
 impl SpecialModel {
-    /// A special model type of another namespace, which Horizon has no renderer for.
-    pub fn is_foreign(v: &Value) -> bool {
-        v.get("type")
-            .and_then(Value::as_str)
-            .and_then(|t| super::identifier(t).ok())
-            .is_some_and(|t| super::foreign::is_foreign(&t))
-    }
-    /// Says once per type that a special model type of another namespace draws as its `base`
-    /// model, and where a mod gets the effect from model JSON instead.
-    pub fn warn_foreign_once(v: &Value) {
-        static SEEN: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
-        let Some(kind) = v.get("type").and_then(Value::as_str) else {
-            return;
-        };
-        if SEEN.lock().unwrap().insert(kind.to_owned()) {
-            log::warn!(
-                "Horizon: special item model type {kind} has no renderer, so its `base` model is drawn; \
-                 use a `minecraft:model` with `elements` and `display`, and `item_model_property` for \
-                 conditions (modding book, hook notes: conditional item model properties)"
-            );
-        }
-    }
     pub fn decode(v: &Value) -> Result<Self> {
         let m = object(v)?;
         let float_or = |key: &str, default: f32| get(m, key).map_or(Ok(default), float);
@@ -169,7 +146,11 @@ impl SpecialModel {
             },
             "minecraft:shield" => SpecialKind::Shield,
             "minecraft:trident" => SpecialKind::Trident,
-            _ => return Err(err("unknown special model type")),
+            other => {
+                return Err(err(&format!(
+                    "unknown special model type {other}: no mod registered it"
+                )));
+            }
         };
         Ok(Self { kind })
     }

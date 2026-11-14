@@ -171,6 +171,14 @@ impl ItemEnv for Env<'_, '_> {
                 models,
             });
     }
+    fn special_model_parts(
+        &self,
+        kind: &str,
+        config: &std::sync::Arc<horizon_core::nbt::Tag>,
+        stack: &StackView,
+    ) -> Option<std::sync::Arc<[horizon_assets::item_model::SpecialPart]>> {
+        super::native_special_renderers::parts(self.game, kind, config, stack)
+    }
     fn stack_fluid(&self, stack: &StackView) -> Option<&str> {
         // Vanilla's items keep vanilla's closed set; only a mod's own item asks its parts.
         if stack.item.starts_with("minecraft:") {

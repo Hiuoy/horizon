@@ -341,6 +341,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 LayerContent::Missing => {
                     ("model", bake(&mut baked_cache, MISSING_MODEL), json!({}))
                 }
+                LayerContent::Parts { base, .. } => {
+                    ("parts", bake(&mut baked_cache, base), json!({}))
+                }
                 LayerContent::Special {
                     base,
                     model,
