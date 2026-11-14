@@ -99,7 +99,18 @@ fn percent(progress: Option<native_mods::Progress>) -> u32 {
     ((from + span * p.fraction.unwrap_or(0.).clamp(0., 1.)) * 100.).round() as u32
 }
 
+/// The stop for worlds at stake, when it belongs to the instance on screen (`mine`).
+fn stop_here(mine: bool, stake: Option<&native_mods::AtStake>) -> Option<&native_mods::AtStake> {
+    stake.filter(|_| mine)
+}
+
 impl Launcher {
+    /// The worlds stop of the instance on screen, if one is pending: its choice row is the only
+    /// way on, so the panel's Build and the menu's Build now wait for it.
+    fn worlds_stop(&self, mine: bool) -> Option<&native_mods::AtStake> {
+        stop_here(mine, self.native_worlds.as_ref())
+    }
+
     /// The selected instance's build card: the build mode, and the build under way or its end.
     pub(super) fn native_build(&self, cx: &mut Context<Self>) -> Option<Div> {
         let t = self.theme;
@@ -304,7 +315,7 @@ impl Launcher {
         let can_build = self.pending_consent.is_none()
             && !(self.native_step.is_some() && mine)
             // While worlds are at stake the choice row below is the only decision.
-            && !(mine && self.native_worlds.is_some())
+            && self.worlds_stop(mine).is_none()
             && (error.is_some() || needs.is_some());
         let mut right = div().flex().items_center().gap(px(8.));
         if self.native_step.is_none() {
@@ -400,7 +411,7 @@ impl Launcher {
         let t = self.theme;
         // The same build again: on the base it stopped on, the worlds backed up first.
         let base = stake.base.clone();
-        let stay = tr("Don't build").to_string();
+        let stay = native_mods::fit::dont_build().to_string();
         div()
             .flex()
             .flex_col()
@@ -426,7 +437,10 @@ impl Launcher {
                     .child(
                         button(
                             "native-worlds-back-up",
-                            native_mods::fit::back_up_and_build(stake.worlds.len()),
+                            native_mods::fit::back_up_and_build(
+                                stake.worlds.len(),
+                                !stake.unbuilt.is_empty(),
+                            ),
                             Kind::Secondary,
                             &t,
                         )
@@ -589,6 +603,8 @@ impl Launcher {
         let busy = self.native_step.is_some();
         let building = busy && self.native_for.as_deref() == Some(instance.id.as_str());
         let routes = self.native_routes(cx);
+        let mine = self.native_for.as_deref() == Some(instance.id.as_str());
+        let stop = self.worlds_stop(mine);
         let route = routes
             .mods
             .iter()
@@ -608,18 +624,21 @@ impl Launcher {
                 tr("Another build is running").into(),
                 tr("This instance's build waits until it finishes.").to_string(),
             )
-        } else if self.native_for.as_deref() == Some(instance.id.as_str())
-            && self
-                .native_worlds
-                .as_ref()
-                .is_some_and(|stake| stake.unbuilt.iter().any(|id| id == mod_id))
+        } else if self
+            .native_unbuilt
+            .as_ref()
+            .is_some_and(|(of, ids)| of == &instance.id && ids.iter().any(|id| id == mod_id))
         {
-            // The stop on screen is about this mod: its fit was only a prediction.
+            // Its fit was only a prediction: the compile said otherwise, until the next build.
             (
                 "information-circle",
                 pal.warn,
-                trf("{mod} didn't build", &[("mod", mod_id)]).into(),
-                native_mods::fit::did_not_build_pending(mod_id),
+                native_mods::fit::didnt_build_headline(mod_id).into(),
+                if stop.is_some() {
+                    native_mods::fit::did_not_build_pending(mod_id)
+                } else {
+                    native_mods::fit::did_not_build_last(mod_id)
+                },
             )
         } else if state == State::UpToDate {
             (
@@ -648,7 +667,10 @@ impl Launcher {
                     "information-circle",
                     pal.warn,
                     headline.clone().into(),
-                    format!("{line}\n{actions}"),
+                    match stop.filter(|stake| stake.mods.iter().any(|id| id == mod_id)) {
+                        Some(_) => format!("{line}\n{}", native_mods::fit::actions_pending(mod_id)),
+                        None => format!("{line}\n{actions}"),
+                    },
                 ),
             }
         };
@@ -698,14 +720,16 @@ impl Launcher {
                         horizon_launcher::browser::java::set_enabled(&home, &id, false)
                             .err()
                             .map(Err);
+                    // A stop about this mod is moot once it is off: its text would be stale.
+                    if mine && this.native_worlds.take().is_some() {
+                        this.native_error = None;
+                    }
                     this.mods.route_open = None;
                     this.instance_mods_changed();
                     cx.notify();
                 }))
             };
-            // The worlds choice on the panel is the only way on while it is pending.
-            let worlds_pending = self.native_for.as_deref() == Some(instance.id.as_str())
-                && self.native_worlds.is_some();
+            let worlds_pending = stop.is_some();
             let build_now = ui::menu_item(
                 "route-build",
                 tr("Build now").into(),
@@ -863,4 +887,29 @@ fn text_in(size: f32, color: Hsla) -> Div {
         .text_size(px(size))
         .line_height(px((size * 1.4).round()))
         .text_color(color)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn stake() -> native_mods::AtStake {
+        native_mods::AtStake {
+            text: String::new(),
+            worlds: vec!["Home".into()],
+            mods: vec!["greeter".into()],
+            unbuilt: vec![],
+            backups: Default::default(),
+            stay: String::new(),
+            base: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_worlds_stop_belongs_to_the_instance_that_built() {
+        let stake = stake();
+        assert_eq!(stop_here(true, Some(&stake)), Some(&stake));
+        assert_eq!(stop_here(false, Some(&stake)), None);
+        assert_eq!(stop_here(true, None), None);
+    }
 }

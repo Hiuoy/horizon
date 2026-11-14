@@ -419,11 +419,39 @@ pub fn back_up_and_update(worlds: usize) -> &'static str {
 }
 
 /// [`back_up_and_update`] on the Build panel, where nothing is being updated.
-pub fn back_up_and_build(worlds: usize) -> &'static str {
-    match worlds {
-        1 => tr("Back up this world and build without what doesn't fit"),
-        _ => tr("Back up these worlds and build without what doesn't fit"),
+pub fn back_up_and_build(worlds: usize, unbuilt: bool) -> &'static str {
+    match (worlds, unbuilt) {
+        (1, false) => tr("Back up this world and build without what doesn't fit"),
+        (_, false) => tr("Back up these worlds and build without what doesn't fit"),
+        (1, true) => tr("Back up this world and build without what didn't build"),
+        (_, true) => tr("Back up these worlds and build without what didn't build"),
     }
+}
+
+/// The choice on the Build panel that builds nothing.
+pub fn dont_build() -> &'static str {
+    tr("Don't build")
+}
+
+/// The chip's headline for a mod whose compile failed.
+pub fn didnt_build_headline(name: &str) -> String {
+    trf("{mod} didn't build", &[("mod", name)])
+}
+
+/// The chip's menu after the player chose and the failed mod is still there.
+pub fn did_not_build_last(name: &str) -> String {
+    trf(
+        "{mod} looked compatible with this game but didn't build the last time. This is for {mod}'s author to fix.",
+        &[("mod", name)],
+    )
+}
+
+/// [`actions`] while the stop for worlds saved with `name` is on screen.
+pub fn actions_pending(name: &str) -> String {
+    trf(
+        "The build is stopped until you choose; {mod} stays on until then.",
+        &[("mod", name)],
+    )
 }
 
 #[cfg(test)]

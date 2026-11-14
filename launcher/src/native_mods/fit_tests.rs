@@ -269,3 +269,27 @@ fn an_update_says_how_many_mods_fit_and_which_will_be_switched_off() {
     };
     assert_eq!(short(&exact), "it changes the game's own code");
 }
+
+#[test]
+fn the_worlds_buttons_and_the_stopped_mod_say_what_is_so() {
+    assert_eq!(
+        back_up_and_build(1, false),
+        "Back up this world and build without what doesn't fit"
+    );
+    assert_eq!(
+        back_up_and_build(3, false),
+        "Back up these worlds and build without what doesn't fit"
+    );
+    assert_eq!(
+        back_up_and_build(1, true),
+        "Back up this world and build without what didn't build"
+    );
+    assert_eq!(back_up_and_update(1), "Back up this world and update");
+    assert_eq!(back_up_and_update(2), "Back up these worlds and update");
+    assert_eq!(
+        actions_pending("Greeter"),
+        "The build is stopped until you choose; Greeter stays on until then."
+    );
+    assert!(did_not_build_pending("Greeter").contains("stays on until you choose"));
+    assert!(did_not_build_last("Greeter").contains("didn't build the last time"));
+}

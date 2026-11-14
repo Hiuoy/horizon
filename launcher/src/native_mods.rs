@@ -1592,6 +1592,8 @@ pub struct AtStake {
     pub text: String,
     /// The worlds' names.
     pub worlds: Vec<String>,
+    /// Every mod the stop is about.
+    pub mods: Vec<String>,
     /// The mods among them that looked compatible and didn't build.
     pub unbuilt: Vec<String>,
     /// Where backups go.
@@ -1681,6 +1683,11 @@ fn guard_worlds(
             worlds: at_stake
                 .iter()
                 .map(|(world, _)| world.name.clone())
+                .collect(),
+            mods: left
+                .iter()
+                .filter(|l| at_stake.iter().any(|(_, mods)| mods.contains(&l.id)))
+                .map(|l| l.id.clone())
                 .collect(),
             unbuilt: left
                 .iter()
@@ -2720,6 +2727,7 @@ mod tests {
             };
             assert!(stake.text.starts_with(headline), "{}", stake.text);
             assert_eq!(stake.worlds, ["Home"]);
+            assert_eq!(stake.mods, ["greeter"]);
             assert_eq!(stake.unbuilt, unbuilt);
             assert_eq!(stake.backups, home.join("backups"));
             assert!(
