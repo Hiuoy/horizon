@@ -120,6 +120,16 @@ pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
                 (Some(a), Some(b)) => a == b,
                 _ => false,
             }
+    }
+        "minecraft:attack_animation" => {
+            use crate::properties::swing_animation::SwingAnimation;
+            let animation = |stack: &ItemStack| {
+                stack
+                    .data()
+                    .and_then(|data| data.other(id))
+                    .and_then(SwingAnimation::decode)
+            };
+            animation(a).is_some_and(|expected| animation(b) == Some(expected))
         }
         "minecraft:damage" => a.damage == b.damage,
         "minecraft:map_id" => map_id(a) == map_id(b),

@@ -9,6 +9,7 @@ use super::packrat::{Grammar, Reason, State, Sugg, Term, Value, alt, ch, opt, se
 use super::{CmdResult, CommandError, Reader, SuggestionsBuilder};
 use horizon_core::nbt::{Compound, Tag};
 use horizon_world::datafix::dynamic::as_number;
+use horizon_items::properties::swing_animation::SwingAnimation;
 use std::rc::Rc;
 
 fn int_of(t: &Tag) -> Option<i64> {
@@ -68,6 +69,7 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:potion_duration_scale",
     "minecraft:minimum_attack_charge",
     "minecraft:dyed_color",
+    "minecraft:attack_animation",
 ];
 
 /// Validate and decode a component into the value representation shared with stacks.
@@ -76,6 +78,13 @@ pub const DECODED_COMPONENTS: &[&str] = &[
 pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Result<Tag, String> {
     if id == "minecraft:tooltip_display" {
         return tooltip_display(value, reg);
+    }
+    if id == "minecraft:attack_animation" {
+        return SwingAnimation::decode(value)
+            .map(SwingAnimation::to_tag)
+            .ok_or_else(|| {
+                "Invalid minecraft:attack_animation: expected a swing animation record".into()
+            });
     }
     if !DECODED_COMPONENTS.contains(&id) {
         return Ok(value.clone());
@@ -247,6 +256,9 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
         "minecraft:dyed_color" => horizon_core::color::rgb_color_from_tag(t)
             .map(|_| ())
             .ok_or_else(|| "Expected a number or a list of three numeric RGB channels".into()),
+        "minecraft:attack_animation" => SwingAnimation::decode(t).map(|_| ()).ok_or_else(|| {
+            "Invalid minecraft:attack_animation: expected a swing animation record".into()
+        }),
         "minecraft:damage" | "minecraft:repair_cost" => {
             let v = int_of(t).ok_or("Not a number")?;
             if v < 0 {
