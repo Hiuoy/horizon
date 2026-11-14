@@ -3,7 +3,7 @@ use crate::mobs::{anim::Poses, load_model, render::draw};
 use horizon_assets::resource_source::{Resource, ResourceSource};
 
 #[test]
-#[ignore = "needs prepared resources in HORIZON_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn villager_client_partial_hat_cache_refreshes() {
     let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
     let table = ResolvedProfessions::vanilla();

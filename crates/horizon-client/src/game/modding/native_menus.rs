@@ -405,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs prepared resources; isolated hook registration"]
+    #[ignore = "daily"]
     fn container_hooks_follow_actual_open_boundaries_without_a_tick() {
         use mod_api::{Hooks, ModEntry, Mods, PlayerContainerCloseEvent, PlayerContainerOpenEvent};
         use std::sync::Mutex;

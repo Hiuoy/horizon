@@ -8582,7 +8582,6 @@ impl Game<'_> {
         let distance = (terrain_distance * 16) as f32;
         let depth_far =
             horizon_client::camera::depth_far(terrain_distance, self.settings.cloud_range);
-        // Only native mods read it: no matrices or allocation per frame without one.
         let mods_read_camera = !mod_api::__private::mods().is_empty();
         self.screen_blur_requested.set(false);
         self.native_camera_frame = (mods_read_camera && !title).then(|| {
@@ -8609,6 +8608,7 @@ impl Game<'_> {
                 dimension: self.dim.id().to_string(),
             }
         });
+        let _projection_frame = (!title).then(|| self.activate_projection_frame());
         pr.lap("pr_projection");
         // GUI hooks project against this frame's camera, including its bob/spin and FOV.
         let mut hud = horizon_client::spans::time("hud", || self.hud(size));
@@ -11274,7 +11274,6 @@ const NUMERIC_KEYS: [KeyCode; 11] = [
     KeyCode::Numpad8,
     KeyCode::Numpad9,
 ];
-
 
 /// A title-shaped frame: black clear and panorama, only the HUD is drawn.
 /// The window's `HWND`, for the boot screen's GDI paint (`horizon_threads`):

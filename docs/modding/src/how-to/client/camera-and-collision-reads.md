@@ -28,7 +28,8 @@ The `ClientHost::camera()` helper returns the most recently extracted world fram
 `GameRenderer.projectPointToScreen`: normalised device x and y (-1 to 1, x right, y up) and a
 reversed depth z. A HUD or screen hook turns it into GUI pixels with the `DrawContext`'s size
 `[w, h]`: `((x + 1) / 2 * w, (1 - y) / 2 * h)`. It is `None` for a point behind the camera or a
-non-finite one (vanilla returns a mirrored point there), outside a world and before the first frame.
+non-finite one (vanilla returns a mirrored point there), outside a world, before extraction and between render frames. It is supported in GUI, screen
+and world drawing callbacks after camera extraction, not setup or tick callbacks.
 
 `ClientHost::set_camera_type(type)` is a queued client-only effect and takes `&self`, so
 shared callbacks such as `camera_pose` can request a perspective. `camera_type()` reports

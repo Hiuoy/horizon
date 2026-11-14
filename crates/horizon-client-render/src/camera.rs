@@ -1084,6 +1084,9 @@ mod tests {
             (edge[0] - 1.0).abs() < 1e-4 && (edge[1] - 1.0).abs() < 1e-4,
             "{edge:?}"
         );
+        let near = project([0.0, 64.0, 0.05]).unwrap();
+        assert!((near[2] - 1.0).abs() < 1e-5, "{near:?}");
+        assert_eq!(project([f64::MAX, 64.0, 10.0]), None);
         assert_eq!(project([0.0, 64.0, -10.0]), None);
         assert_eq!(project([0.0, 64.0, 0.0]), None);
         assert_eq!(project([f64::NAN, 64.0, 10.0]), None);
