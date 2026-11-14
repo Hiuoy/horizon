@@ -525,7 +525,7 @@ pub(super) fn register_resource_sources(role: ExecutionRole) {
 fn register_special_model_renderers() {
     let mut registry = mod_api::SpecialModelRendererRegistry::default();
     Game::native_register_special_model_renderer(&RegistrationContext::new(), &mut registry);
-    let (renderers, replaced) = registry.into_renderers();
+    let (mut renderers, replaced) = registry.into_renderers();
     for replaced in replaced {
         let name = |id: Option<&str>| id.unwrap_or("the game").to_owned();
         log::warn!(
@@ -535,13 +535,13 @@ fn register_special_model_renderers() {
             name(replaced.later)
         );
     }
+    // In slot order: the types' models resolve to these slots as they decode.
     let kept = horizon_assets::item_model::register_special_model_types(
         renderers.keys().cloned().collect(),
     );
     super::native_special_renderers::register(
-        renderers
-            .into_iter()
-            .filter(|(kind, _)| kept.contains(kind))
+        kept.into_iter()
+            .filter_map(|kind| renderers.remove(&kind).map(|renderer| (kind, renderer)))
             .collect(),
     );
 }

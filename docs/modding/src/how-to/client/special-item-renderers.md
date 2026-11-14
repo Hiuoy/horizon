@@ -73,9 +73,10 @@ vanilla's special models do. The node's own `transformation` applies to every pa
 ## When it is asked
 
 The renderer is asked on the client's main thread when an item of such a model is drawn with a
-stack other than the ones that model was last asked about. An unchanged stack is asked once, however
-many frames draw it, and every display context (a hand, a screen, the ground, a frame, a head, another
-player's hand) draws that answer. A resource reload drops the kept answers.
+stack that model didn't draw in the last frame. An unchanged stack is asked once, however many
+frames draw it in a row and however many stacks share the model, and every display context (a hand,
+a screen, the ground, a frame, a head, another player's hand) draws that answer. A stack that leaves
+the screen, or changes, is asked again when it is next drawn; a resource reload drops every answer.
 
 ## Registrations and refusals
 

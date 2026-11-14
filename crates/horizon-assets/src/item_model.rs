@@ -23,10 +23,10 @@ mod mod_properties;
 mod special;
 pub use fluid_container::{FluidAppearance, FluidContainer, FluidContainerTextures};
 pub use mod_properties::{
-    is_item_model_type, is_mod_id, is_range_property, is_select_property, is_skull_kind,
-    is_special_model_type, is_tint_source, keep_mod_ids, register_item_models,
-    register_range_properties, register_select_properties, register_skull_kinds,
-    register_special_model_types, register_tint_sources,
+    SpecialModelSlot, is_item_model_type, is_mod_id, is_range_property, is_select_property,
+    is_skull_kind, is_tint_source, keep_mod_ids, register_item_models, register_range_properties,
+    register_select_properties, register_skull_kinds, register_special_model_types,
+    register_tint_sources, special_model_slot,
 };
 pub use special::{SpecialKind, SpecialModel};
 
@@ -434,8 +434,8 @@ pub enum ItemModelNode {
     RegisteredSpecial {
         base: String,
         transformation: Option<Mat4>,
-        /// The `model` object's `type`.
-        kind: String,
+        /// The `model` object's `type`, resolved to its renderer's slot.
+        slot: SpecialModelSlot,
         /// The `model` object, converted once at load.
         config: Arc<horizon_core::nbt::Tag>,
     },
@@ -584,10 +584,10 @@ impl ItemModelNode {
                 // type that isn't vanilla's is an error naming it (`SpecialModel::decode`), so the
                 // item draws the missing model.
                 match registered_special_type(model)? {
-                    Some(kind) => Self::RegisteredSpecial {
+                    Some(slot) => Self::RegisteredSpecial {
                         base,
                         transformation,
-                        kind,
+                        slot,
                         config: Arc::new(
                             horizon_core::json_nbt::json_to_tag(model)
                                 .map_err(|_| err("invalid special model data"))?,
@@ -655,10 +655,13 @@ impl ItemModelNode {
         }
     }
 }
-/// The `type` of a `minecraft:special` model's `model` object when a native mod registered it.
-fn registered_special_type(model: &Value) -> Result<Option<String>> {
-    let kind = ident(required(object(model)?, "type")?)?;
-    Ok(is_special_model_type(&kind).then_some(kind))
+/// The slot of a `minecraft:special` model's `model` object's `type` when a native mod
+/// registered it.
+fn registered_special_type(model: &Value) -> Result<Option<SpecialModelSlot>> {
+    Ok(special_model_slot(&ident(required(
+        object(model)?,
+        "type",
+    )?)?))
 }
 impl SwitchCase {
     fn decode(property: &SelectProperty, v: &Value) -> Result<Self> {
@@ -1188,16 +1191,18 @@ pub trait ItemEnv {
         _models: &mut Vec<String>,
     ) {
     }
-    /// The resource models a mod's registered special model type `kind` draws for `stack`, with
-    /// the model object (`config`, the same allocation for the node until resources reload): each
-    /// posed in the model's space and tinted. `None` when its renderer refused or failed, and the
-    /// layer draws the missing model; nothing draws for an empty list.
+    /// What a mod's registered special model type (`slot`) draws for `stack` in the model node
+    /// of `base` and the model object `config` (the same allocation for the node until resources
+    /// reload): the resource models its renderer answered, each posed in the model's space and
+    /// tinted, prepared for drawing when the answer was accepted. `None` when its renderer refused
+    /// or failed, and the layer draws the missing model; nothing draws for an empty answer.
     fn special_model_parts(
         &self,
-        _kind: &str,
+        _slot: SpecialModelSlot,
+        _base: &str,
         _config: &Arc<horizon_core::nbt::Tag>,
         _stack: &StackView,
-    ) -> Option<Arc<[SpecialPart]>> {
+    ) -> Option<PreparedParts> {
         None
     }
     /// `PotionContents.getColorOr` for the potion/effects part: the mixed
@@ -1262,20 +1267,32 @@ pub enum LayerContent {
     },
     /// `MissingItemModel`.
     Missing,
-    /// What a mod's registered special model type drew for the stack: each part's geometry is
-    /// its own model's quads, posed by `pose` under the layer's transform; the display
-    /// transforms, particle and GUI light are `base`'s, as vanilla's `SpecialModelWrapper` takes
-    /// them from its base model.
-    Parts {
-        base: String,
-        parts: Arc<[SpecialPart]>,
-    },
+    /// What a mod's registered special model type drew for the stack, prepared for drawing
+    /// (`ItemEnv::special_model_parts`): each part's geometry is its own model's quads, posed
+    /// under the layer's transform; the display transforms, particle and GUI light are `base`'s,
+    /// as vanilla's `SpecialModelWrapper` takes them from its base model.
+    Parts(PreparedParts),
     Special {
         base: String,
         model: SpecialModel,
         /// What `extractArgument` reads from the stack.
         argument: Value,
     },
+}
+/// A special model renderer's answer as the item renderer prepared it to draw, its models baked
+/// once (`item_render::PreparedSpecial` in the client), so a draw looks nothing up by name. Kept
+/// as long as the answer is; equal only to itself.
+#[derive(Clone)]
+pub struct PreparedParts(pub Arc<dyn std::any::Any + Send + Sync>);
+impl std::fmt::Debug for PreparedParts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("PreparedParts")
+    }
+}
+impl PartialEq for PreparedParts {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
 }
 /// One resource model a mod's special model renderer draws.
 #[derive(Clone, Debug, PartialEq)]
@@ -1568,14 +1585,14 @@ impl Resolve<'_> {
             ItemModelNode::RegisteredSpecial {
                 base,
                 transformation,
-                kind,
+                slot,
                 config,
             } => {
-                let content = match self.env.special_model_parts(kind, config, self.stack) {
-                    Some(parts) => LayerContent::Parts {
-                        base: base.clone(),
-                        parts,
-                    },
+                let content = match self
+                    .env
+                    .special_model_parts(*slot, base, config, self.stack)
+                {
+                    Some(prepared) => LayerContent::Parts(prepared),
                     None => LayerContent::Missing,
                 };
                 out.layers.push(Layer {

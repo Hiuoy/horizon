@@ -29,7 +29,7 @@ use horizon_assets::{
     item_bake::{BakedItemModel, SpriteLookup, SpriteMask, bake_item_model, bake_sprite_layer},
     item_model::{
         ClientItem, Context, DisplayContext, FoilType, ItemEnv, ItemModels, LayerContent,
-        LevelState, OwnerState, SpecialModel, StackView,
+        LevelState, OwnerState, PreparedParts, SpecialModel, StackView,
     },
     model::Direction,
     palette::PalettedPermutations,
@@ -926,46 +926,70 @@ impl ItemRenderer {
         }
         out
     }
-    /// The layers a mod's special model renderer drew (`LayerContent::Parts`), one for each
-    /// part: the part's own model's quads, posed under the layer's transform, with `base`'s
-    /// display transform, particle and GUI light. A part naming a model the packs don't have
-    /// refuses them all, and the layer draws the missing model.
+    /// A special model renderer's answer `parts` for a model node of `base`, prepared to draw:
+    /// `base` and each part's model baked, once, when the answer is accepted, so a draw looks
+    /// nothing up by name. A part naming a model the packs don't have refuses them all, and the
+    /// layer draws the missing model.
+    pub fn prepare_parts(
+        &self,
+        base: &str,
+        parts: &[horizon_assets::item_model::SpecialPart],
+    ) -> PreparedParts {
+        let part = |model: &str, tints, pose| {
+            let geometry = self.bake(model);
+            PreparedPart {
+                extents: self.quad_extents(model, &geometry),
+                geometry,
+                tints,
+                pose,
+            }
+        };
+        let parts = match parts.iter().find(|p| !self.library.resolves(&p.model)) {
+            Some(unknown) => {
+                warn_unknown_part_once(&unknown.model);
+                vec![part(
+                    MISSING_MODEL,
+                    Vec::new(),
+                    horizon_assets::math::Mat4::IDENTITY,
+                )]
+            }
+            None => parts
+                .iter()
+                .map(|p| part(&p.model, p.tints.clone(), p.pose))
+                .collect(),
+        };
+        PreparedParts(Arc::new(PreparedSpecial {
+            base: self.bake(base),
+            parts,
+        }))
+    }
+    /// The layers of a prepared answer (`LayerContent::Parts`), one for each part: the part's own
+    /// model's quads, posed under the layer's transform, with the base model's display transform,
+    /// particle and GUI light.
     fn push_parts(
         &self,
         layers: &mut Vec<LayerRender>,
         display: DisplayContext,
         (foil, transform): (FoilType, horizon_assets::math::Mat4),
-        base: &str,
-        parts: &[horizon_assets::item_model::SpecialPart],
+        prepared: &PreparedParts,
     ) {
-        let base = self.bake(base);
-        let render = |geometry: Arc<BakedItemModel>, extents, tints, local| LayerRender {
-            geometry: LayerGeometry::Quads(geometry),
-            tints,
-            foil,
-            matrix: glam_matrix(&base.layer_matrix(display, &local)),
-            uses_block_light: base.uses_block_light,
-            particle: sprite_name(&base.particle.sprite).to_owned(),
-            extents,
-        };
-        if let Some(unknown) = parts.iter().find(|p| !self.library.resolves(&p.model)) {
-            warn_unknown_part_once(&unknown.model);
-            let missing = self.bake(MISSING_MODEL);
-            let extents = self.quad_extents(MISSING_MODEL, &missing);
-            layers.push(render(missing, extents, Vec::new(), transform));
+        let Some(prepared) = prepared.0.downcast_ref::<PreparedSpecial>() else {
+            // Only `prepare_parts` makes them.
             return;
-        }
-        for part in parts {
-            let baked = self.bake(&part.model);
-            let extents = self.quad_extents(&part.model, &baked);
+        };
+        let base = &prepared.base;
+        for part in &prepared.parts {
             // Under `applyTransform`'s half-block offset, so a part's pose is about the model's
             // corner, as its elements are.
-            layers.push(render(
-                baked,
-                extents,
-                part.tints.clone(),
-                transform.mul(&part.pose),
-            ));
+            layers.push(LayerRender {
+                geometry: LayerGeometry::Quads(part.geometry.clone()),
+                tints: part.tints.clone(),
+                foil,
+                matrix: glam_matrix(&base.layer_matrix(display, &transform.mul(&part.pose))),
+                uses_block_light: base.uses_block_light,
+                particle: sprite_name(&base.particle.sprite).to_owned(),
+                extents: part.extents.clone(),
+            });
         }
     }
     /// `ItemModelResolver.updateForTopItem`.
@@ -1037,15 +1061,14 @@ impl ItemRenderer {
                     let extents = self.special_extents(&model);
                     (LayerGeometry::Special { model, argument }, baked, extents)
                 }
-                LayerContent::Parts { base, parts } => {
+                LayerContent::Parts(prepared) => {
                     // What a mod drew may change with every draw, so no GUI item is kept.
                     animated = true;
                     self.push_parts(
                         &mut layers,
                         display,
                         (layer.foil, layer.transform),
-                        &base,
-                        &parts,
+                        &prepared,
                     );
                     continue;
                 }
@@ -1121,7 +1144,18 @@ fn corners(baked: &BakedItemModel) -> Vec<Vec3> {
     }
     out
 }
-/// A `horizon-assets` (row-major, JOML-exact) matrix as glam's.
+/// A special model renderer's answer as [`ItemRenderer::prepare_parts`] baked it.
+struct PreparedSpecial {
+    /// The model node's `base`: its display transforms, particle and GUI light.
+    base: Arc<BakedItemModel>,
+    parts: Vec<PreparedPart>,
+}
+struct PreparedPart {
+    geometry: Arc<BakedItemModel>,
+    extents: Arc<Vec<Vec3>>,
+    tints: Vec<i32>,
+    pose: horizon_assets::math::Mat4,
+}
 /// Says once per model id that a mod's special model renderer drew a model the packs don't have.
 fn warn_unknown_part_once(model: &str) {
     static SEEN: Mutex<std::collections::BTreeSet<String>> =
@@ -1136,6 +1170,7 @@ fn warn_unknown_part_once(model: &str) {
         );
     }
 }
+/// A `horizon-assets` (row-major, JOML-exact) matrix as glam's.
 pub fn glam_matrix(m: &horizon_assets::math::Mat4) -> Mat4 {
     Mat4::from_cols_array_2d(&m.rows()).transpose()
 }

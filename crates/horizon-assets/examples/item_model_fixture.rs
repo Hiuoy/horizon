@@ -341,8 +341,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 LayerContent::Missing => {
                     ("model", bake(&mut baked_cache, MISSING_MODEL), json!({}))
                 }
-                LayerContent::Parts { base, .. } => {
-                    ("parts", bake(&mut baked_cache, base), json!({}))
+                LayerContent::Parts(_) => {
+                    unreachable!("the fixture's host answers no special model renderer")
                 }
                 LayerContent::Special {
                     base,

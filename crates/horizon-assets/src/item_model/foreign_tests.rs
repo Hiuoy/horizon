@@ -124,33 +124,36 @@ fn a_special_type_draws_by_its_renderer_or_fails_by_name() {
         error.contains("unknown special model type mod:energy_cube"),
         "{error}"
     );
-    register_special_model_types(vec!["foreigntest:skillet".into()]);
+    // A mod may replace a vanilla type: its models then go to the mod's renderer.
+    register_special_model_types(vec!["foreigntest:skillet".into(), "minecraft:bell".into()]);
     let n = node(
         r#"{"type":"minecraft:special","base":"foreigntest:item/pan","model":{"type":"foreigntest:skillet","handle":2}}"#,
     )
     .unwrap();
     let ItemModelNode::RegisteredSpecial {
-        base, kind, config, ..
+        base, slot, config, ..
     } = &n
     else {
         panic!("not a registered special model: {n:?}");
     };
     assert_eq!(
-        (base.as_str(), kind.as_str()),
-        ("foreigntest:item/pan", "foreigntest:skillet")
+        (base.as_str(), *slot),
+        ("foreigntest:item/pan", SpecialModelSlot(0))
     );
     assert_eq!(config.get("handle"), Some(&horizon_core::nbt::Tag::Byte(2)));
     let n =
         node(r#"{"type":"minecraft:special","base":"a:b","model":{"type":"minecraft:shield"}}"#)
             .unwrap();
     assert!(matches!(n, ItemModelNode::Special { .. }));
-    // A mod may replace a vanilla type: its models then go to the mod's renderer.
-    register_special_model_types(vec!["minecraft:bell".into()]);
     let n = node(r#"{"type":"minecraft:special","base":"a:b","model":{"type":"minecraft:bell"}}"#)
         .unwrap();
-    assert!(
-        matches!(&n, ItemModelNode::RegisteredSpecial { kind, .. } if kind == "minecraft:bell")
-    );
+    assert!(matches!(
+        &n,
+        ItemModelNode::RegisteredSpecial {
+            slot: SpecialModelSlot(1),
+            ..
+        }
+    ));
 }
 
 /// A node type no mod registered is an error naming it, so the item definition holding it isn't

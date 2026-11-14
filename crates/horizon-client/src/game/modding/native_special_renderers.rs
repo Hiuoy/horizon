@@ -1,38 +1,40 @@
 //! Special item models drawn by mods' renderers on the client:
 //! `native_register_special_model_renderer` (NeoForge's `RegisterSpecialModelRendererEvent`) is
 //! asked once at start, before resources load, and its types are what a `minecraft:special` model
-//! may name besides vanilla's, or in place of one. When an item of such a model is resolved for
-//! drawing, on the main thread, the type's renderer answers the resource models to draw
-//! (`ItemEnv::special_model_parts`), checked here before the resolver bakes them. The answer is
-//! kept by the stack's equality for each model node, so an unchanged stack is asked once across
-//! frames and every display context draws the same answer.
+//! may name besides vanilla's, or in place of one; a model resolves its type to the renderer's
+//! slot when it decodes. When an item of such a model is resolved for drawing, on the main thread,
+//! the type's renderer answers the resource models to draw (`ItemEnv::special_model_parts`),
+//! checked here, then prepared by the item renderer, which bakes them once. The prepared answer
+//! is kept by the stack for each model node for as long as that stack is drawn unchanged, so it
+//! is asked once across frames, every display context draws the same answer, and a draw looks
+//! nothing up by name.
 use super::native_entity_renderers::Resolved;
 use horizon_assets::{
-    item_model::{SpecialPart, StackView},
+    item_model::{PreparedParts, SpecialModelSlot, SpecialPart, StackView},
     math::Mat4,
 };
-use horizon_client::fast_hash::FxHashMap;
+use horizon_client::fast_hash::{FxHashMap, FxHasher};
 use horizon_core::nbt::Tag;
 use mod_api::{ClientHost, MAX_SPECIAL_MODEL_PARTS, SpecialModelPart, SpecialModelRenderer};
+use serde_json::Value;
 use std::{
-    collections::{BTreeMap, VecDeque},
-    sync::{Arc, Mutex, OnceLock, PoisonError, atomic::Ordering},
+    hash::{Hash, Hasher},
+    sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock, PoisonError, atomic::Ordering},
 };
 
-/// The registrations, by special model type: kept once at start.
-static REGISTERED: OnceLock<BTreeMap<String, Resolved<dyn SpecialModelRenderer>>> =
-    OnceLock::new();
+/// The registrations, by slot ([`SpecialModelSlot`]): each type and its renderer, kept once at
+/// start.
+static REGISTERED: OnceLock<Vec<(String, Resolved<dyn SpecialModelRenderer>)>> = OnceLock::new();
 
-/// The answers kept for each model node (by its `config`'s address, stable until resources
-/// reload), newest last: the stacks asked about and what they draw.
-static ANSWERS: Mutex<Option<FxHashMap<usize, VecDeque<(StackView, Arc<[SpecialPart]>)>>>> =
-    Mutex::new(None);
+/// The prepared answers of the stacks drawn since the last frame began.
+static ANSWERS: LazyLock<Mutex<Answers>> = LazyLock::new(Mutex::default);
 
-/// The most stacks a model node keeps answers for: the oldest goes first.
-const KEPT_PER_NODE: usize = 64;
+fn answers() -> MutexGuard<'static, Answers> {
+    ANSWERS.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
-/// Keeps the mods' registrations, once per process (false when they already were).
-pub(super) fn register(renderers: BTreeMap<String, Arc<dyn SpecialModelRenderer>>) -> bool {
+/// Keeps the mods' registrations in slot order, once per process (false when they already were).
+pub(super) fn register(renderers: Vec<(String, Arc<dyn SpecialModelRenderer>)>) -> bool {
     REGISTERED
         .set(
             renderers
@@ -44,70 +46,145 @@ pub(super) fn register(renderers: BTreeMap<String, Arc<dyn SpecialModelRenderer>
 }
 
 /// On every resource reload: the renderers that failed are asked again, and no answer is kept
-/// (the model nodes they belonged to are gone).
+/// (the model nodes and baked models they belonged to are gone).
 pub(in crate::game) fn reload() {
-    for resolved in REGISTERED.get().into_iter().flat_map(BTreeMap::values) {
+    for (_, resolved) in REGISTERED.get().into_iter().flatten() {
         resolved.failed.store(false, Ordering::Relaxed);
     }
-    *ANSWERS.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    answers().kept.clear();
 }
 
-/// The models the renderer of `kind` draws for `stack` in the model node of `config`: the kept
-/// answer when this node was asked about an equal stack, else the renderer's, checked and kept.
-/// `None` when no mod registered it, when it failed since resources last loaded, or when it fails
-/// now.
+/// Once per frame, before it is drawn: the answers of stacks the last frame didn't draw are
+/// dropped, so what is kept is bounded by what is on screen.
+pub(in crate::game) fn begin_frame() {
+    answers().begin_frame();
+}
+
+/// What the renderer of `slot` draws for `stack` in the model node of `config`: the kept answer
+/// when this node drew an equal stack last frame or this one, else the renderer's, checked,
+/// prepared by `prepare` and kept. `None` when no mod registered it, when it failed since
+/// resources last loaded, or when it fails now.
 pub(in crate::game) fn parts(
     host: &dyn ClientHost,
-    kind: &str,
+    slot: SpecialModelSlot,
     config: &Arc<Tag>,
     stack: &StackView,
-) -> Option<Arc<[SpecialPart]>> {
-    let resolved = REGISTERED.get()?.get(kind)?;
+    prepare: impl FnOnce(&[SpecialPart]) -> PreparedParts,
+) -> Option<PreparedParts> {
+    let (kind, resolved) = REGISTERED.get()?.get(slot.0 as usize)?;
     if resolved.failed.load(Ordering::Relaxed) {
         return None;
     }
-    answer(kind, resolved, Arc::as_ptr(config) as usize, stack, || {
-        use super::api_values::TryIntoApi;
-        let stack = stack
-            .try_into_api()
-            .map_err(|e| format!("the stack can't be read: {e:?}"))?;
-        resolved.inner.extract(host, &stack, config)
+    answer(&ANSWERS, Arc::as_ptr(config) as usize, stack, || {
+        let parts = guarded(kind, resolved, || {
+            use super::api_values::TryIntoApi;
+            let stack = stack
+                .try_into_api()
+                .map_err(|e| format!("the stack can't be read: {e:?}"))?;
+            resolved.inner.extract(host, &stack, config)
+        })?;
+        Some(prepare(&parts))
     })
 }
 
-/// The answer for `stack` in the model node `node`: the one kept for an equal stack, else what
-/// `extract` answers, checked and kept.
+/// The answer for `stack` in the model node `node`: the one kept in `answers` for an equal stack,
+/// else what `ask` answers, kept. The lock isn't held while `ask` runs the mod's renderer.
 fn answer(
-    kind: &str,
-    resolved: &Resolved<dyn SpecialModelRenderer>,
+    answers: &Mutex<Answers>,
     node: usize,
     stack: &StackView,
-    extract: impl FnOnce() -> Result<Vec<SpecialModelPart>, String>,
-) -> Option<Arc<[SpecialPart]>> {
-    if let Some(kept) = kept(node, stack) {
+    ask: impl FnOnce() -> Option<PreparedParts>,
+) -> Option<PreparedParts> {
+    let lock = || answers.lock().unwrap_or_else(PoisonError::into_inner);
+    let key = (node, stack_hash(stack));
+    if let Some(kept) = lock().drawn(key, stack) {
         return Some(kept);
     }
-    let parts: Arc<[SpecialPart]> = guarded(kind, resolved, extract)?.into();
-    let mut answers = ANSWERS.lock().unwrap_or_else(PoisonError::into_inner);
-    let kept = answers
-        .get_or_insert_with(FxHashMap::default)
-        .entry(node)
-        .or_default();
-    if kept.len() == KEPT_PER_NODE {
-        kept.pop_front();
-    }
-    kept.push_back((stack.clone(), parts.clone()));
-    Some(parts)
+    let prepared = ask()?;
+    lock().keep(key, stack, prepared.clone());
+    Some(prepared)
 }
 
-/// The answer kept for an equal stack in the model node `node`.
-fn kept(node: usize, stack: &StackView) -> Option<Arc<[SpecialPart]>> {
-    let answers = ANSWERS.lock().unwrap_or_else(PoisonError::into_inner);
-    let kept = answers.as_ref()?.get(&node)?;
-    kept.iter()
-        .rev()
-        .find(|(asked, _)| asked == stack)
-        .map(|(_, parts)| parts.clone())
+/// The prepared answers kept, by model node (its `config`'s address, stable until resources
+/// reload) and the stack's [`stack_hash`].
+#[derive(Default)]
+struct Answers {
+    /// The frame being drawn.
+    frame: u64,
+    kept: FxHashMap<(usize, u64), Vec<Kept>>,
+}
+struct Kept {
+    stack: StackView,
+    prepared: PreparedParts,
+    /// The last frame that drew it.
+    drawn: u64,
+}
+impl Answers {
+    /// The answer kept for a stack equal to `stack`, now drawn in this frame.
+    fn drawn(&mut self, key: (usize, u64), stack: &StackView) -> Option<PreparedParts> {
+        let frame = self.frame;
+        let kept = self.kept.get_mut(&key)?.iter_mut().find(|k| k.stack == *stack)?;
+        kept.drawn = frame;
+        Some(kept.prepared.clone())
+    }
+    fn keep(&mut self, key: (usize, u64), stack: &StackView, prepared: PreparedParts) {
+        self.kept.entry(key).or_default().push(Kept {
+            stack: stack.clone(),
+            prepared,
+            drawn: self.frame,
+        });
+    }
+    /// Starts the next frame, keeping only the answers the one before drew.
+    fn begin_frame(&mut self) {
+        let last = self.frame;
+        self.frame += 1;
+        self.kept.retain(|_, kept| {
+            kept.retain(|k| k.drawn == last);
+            !kept.is_empty()
+        });
+    }
+}
+
+/// A hash of `stack` that equal stacks share, read in place.
+fn stack_hash(stack: &StackView) -> u64 {
+    let mut h = FxHasher::default();
+    stack.item.hash(&mut h);
+    stack.count.hash(&mut h);
+    stack.bundle_selected.hash(&mut h);
+    for (component, value) in &stack.patch {
+        component.hash(&mut h);
+        match value {
+            Some(value) => value_hash(value).hash(&mut h),
+            None => h.write_u8(0xFF),
+        }
+    }
+    h.finish()
+}
+/// A hash of `value` that equal values share; an object's keys in any order.
+fn value_hash(value: &Value) -> u64 {
+    let mut h = FxHasher::default();
+    std::mem::discriminant(value).hash(&mut h);
+    match value {
+        Value::Null => h.write_u8(0),
+        Value::Bool(b) => b.hash(&mut h),
+        Value::Number(n) => n.as_f64().map(f64::to_bits).hash(&mut h),
+        Value::String(s) => s.hash(&mut h),
+        Value::Array(items) => {
+            for item in items {
+                value_hash(item).hash(&mut h);
+            }
+        }
+        Value::Object(fields) => fields
+            .iter()
+            .fold(0u64, |sum, (key, value)| {
+                let mut field = FxHasher::default();
+                key.hash(&mut field);
+                value_hash(value).hash(&mut field);
+                sum.wrapping_add(field.finish())
+            })
+            .hash(&mut h),
+    }
+    h.finish()
 }
 
 /// Runs `extract` for the renderer `resolved` of `kind` and checks its answer: `None`, with
@@ -201,34 +278,58 @@ mod tests {
         assert_eq!(parts[0].tints, [0xFF11_2233_u32 as i32]);
     }
 
-    /// An unchanged stack is asked once across frames in a model node; another stack, or the same
-    /// stack in another node, is asked anew, and a reload asks again.
+    /// An unchanged stack is asked once for as long as every frame draws it, however many stacks
+    /// a model node draws; another stack, or the same stack in another node, is asked anew. A
+    /// stack a frame didn't draw, or any after a reload, is asked again.
     #[test]
     fn an_unchanged_stack_is_extracted_once_across_frames() {
-        let resolved = renderer();
+        let answers = Mutex::<Answers>::default();
         let asked = std::cell::Cell::new(0);
-        let draw = |node: usize, count: i32| {
-            answer("t:pan", &resolved, node, &StackView::new("t:pan", count), || {
+        let draw = |node: usize, stack: &StackView| {
+            answer(&answers, node, stack, || {
                 asked.set(asked.get() + 1);
-                Ok(vec![SpecialModelPart::new(format!("t:item/{count}"))])
+                Some(PreparedParts(Arc::new(stack.count)))
             })
             .unwrap()
         };
-        // Nodes far from any real `config` address.
+        let count = |prepared: PreparedParts| *prepared.0.downcast_ref::<i32>().unwrap();
+        // Nodes far from any real `config` address; 100 stacks of the pan in a stable order,
+        // more than any fixed count would keep.
         let (pan, pot) = (1, 2);
-        let first = draw(pan, 1);
+        let stacks: Vec<StackView> = (1..=100).map(|n| StackView::new("t:pan", n)).collect();
+        let first: Vec<PreparedParts> = stacks.iter().map(|s| draw(pan, s)).collect();
         for _frame in 0..10 {
-            assert!(Arc::ptr_eq(&draw(pan, 1), &first));
+            answers.lock().unwrap().begin_frame();
+            for (stack, first) in stacks.iter().zip(&first) {
+                assert_eq!(&draw(pan, stack), first);
+            }
         }
-        assert_eq!(asked.get(), 1);
-        assert_eq!(draw(pan, 2)[0].model, "t:item/2");
-        assert_eq!(draw(pot, 1)[0].model, "t:item/1");
-        assert_eq!(asked.get(), 3);
-        assert!(Arc::ptr_eq(&draw(pan, 1), &first));
-        assert_eq!(asked.get(), 3);
-        reload();
-        draw(pan, 1);
-        assert_eq!(asked.get(), 4);
+        assert_eq!(asked.get(), 100);
+        // An equal stack read anew (the game builds its view every draw) is the same stack.
+        let mut named = StackView::new("t:pan", 1);
+        named
+            .patch
+            .insert("minecraft:custom_name".into(), Some(serde_json::json!({"text": "Pan", "bold": true})));
+        let mut renamed = StackView::new("t:pan", 1);
+        renamed
+            .patch
+            .insert("minecraft:custom_name".into(), Some(serde_json::json!({"bold": true, "text": "Pan"})));
+        assert_eq!(draw(pan, &named), draw(pan, &renamed));
+        assert_eq!(asked.get(), 101);
+        assert_eq!(count(draw(pot, &stacks[0])), 1);
+        assert_eq!(asked.get(), 102);
+        // The next frame draws only the first stack: the others are asked again after it.
+        answers.lock().unwrap().begin_frame();
+        assert_eq!(draw(pan, &stacks[0]), first[0]);
+        answers.lock().unwrap().begin_frame();
+        assert_eq!(draw(pan, &stacks[0]), first[0]);
+        assert_eq!(asked.get(), 102);
+        assert_eq!(count(draw(pan, &stacks[1])), 2);
+        assert_eq!(asked.get(), 103);
+        assert_eq!(answers.lock().unwrap().kept.len(), 2);
+        answers.lock().unwrap().kept.clear();
+        draw(pan, &stacks[0]);
+        assert_eq!(asked.get(), 104);
     }
 
     /// An `Err`, a panic, 257 parts and a transform that isn't finite each refuse the answer

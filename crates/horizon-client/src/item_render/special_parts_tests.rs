@@ -3,22 +3,23 @@
 //! light, in every display context and after a reload. Original assets: one cube A, two cubes B.
 use super::*;
 use horizon_assets::{
-    item_model::{SpecialPart, register_special_model_types},
+    item_model::{PreparedParts, SpecialModelSlot, SpecialPart, register_special_model_types},
     resource_source::ResourceRoot,
 };
 use std::fs;
 
 /// A for a stack of one, B for more, tinted; a stack of three names a model no pack has, and one
-/// of four is refused (the renderer failed).
-struct Pan;
-impl ItemEnv for Pan {
+/// of four is refused (the renderer failed). The answer is prepared by the renderer that draws it.
+struct Pan<'r>(&'r ItemRenderer);
+impl ItemEnv for Pan<'_> {
     fn special_model_parts(
         &self,
-        kind: &str,
+        slot: SpecialModelSlot,
+        base: &str,
         config: &Arc<horizon_core::nbt::Tag>,
         stack: &StackView,
-    ) -> Option<Arc<[SpecialPart]>> {
-        assert_eq!(kind, "spt:pan");
+    ) -> Option<PreparedParts> {
+        assert_eq!((slot, base), (SpecialModelSlot(0), "spt:item/base"));
         assert_eq!(config.get("handle"), Some(&horizon_core::nbt::Tag::Byte(2)));
         let part = |model: &str| SpecialPart {
             model: model.to_owned(),
@@ -35,7 +36,7 @@ impl ItemEnv for Pan {
             }],
             _ => vec![part("spt:item/b")],
         };
-        Some(parts.into())
+        Some(self.0.prepare_parts(base, &parts))
     }
 }
 
@@ -155,7 +156,7 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
     register_special_model_types(vec!["spt:pan".into()]);
     let renderer = renderer(&root, 2);
     let resolve = |item: &str, count, display| {
-        renderer.resolve(&stack(item, count), display, None, None, 0, &Pan)
+        renderer.resolve(&stack(item, count), display, None, None, 0, &Pan(&renderer))
     };
 
     // A or B, in the inventory and in hand, tinted and with the base's particle and GUI light.
@@ -233,7 +234,7 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
         None,
         None,
         0,
-        &Pan,
+        &Pan(&reloaded),
     );
     assert_eq!(quads(&reloaded, &state).len(), 18);
     fs::remove_dir_all(root).unwrap();

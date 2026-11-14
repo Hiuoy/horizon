@@ -8249,7 +8249,7 @@ impl Game<'_> {
         &mut self,
         consume: impl FnOnce(&mut Renderer, &Frame<'_>) -> Result<bool>,
     ) -> Result<bool> {
-        self.prepared_model_draws.borrow_mut().clear();
+        self.begin_frame_draws();
         let prepare = spans::guard("prepare");
         let mut pr = spans::laps();
         // The window's GPU holds the atlas: its copy in memory is kept
