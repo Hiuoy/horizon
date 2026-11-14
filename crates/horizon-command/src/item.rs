@@ -24,6 +24,11 @@ fn int_of(t: &Tag) -> Option<i64> {
 }
 /// Built-ins with an implemented shared component payload decoder.
 pub const DECODED_COMPONENTS: &[&str] = &[
+    "minecraft:cat/sound_variant",
+    "minecraft:cat/variant",
+    "minecraft:wolf/sound_variant",
+    "minecraft:wolf/variant",
+
     "minecraft:container_loot",
     "minecraft:tooltip_display",
     "minecraft:tropical_fish/pattern_color",
@@ -123,6 +128,7 @@ pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Resul
     if id == "minecraft:container_loot" {
         return container_loot(value);
     }
+    if let Some(registry) = horizon_items::properties::pet_variants::registry(id) { return horizon_items::properties::pet_variants::decode(registry, value, reg); }
     decode_component(id, value, reg)?;
     if id == "minecraft:block_entity_data" {
         let Tag::Compound(_) = value else {
@@ -184,6 +190,7 @@ pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Resul
 
 /// The codecs of the item components commands commonly set.
 pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), String> {
+    if let Some(registry) = horizon_items::properties::pet_variants::registry(id) { return horizon_items::properties::pet_variants::decode(registry, t, reg).map(|_| ()); }
     match id {
         "minecraft:container_loot" => container_loot(t).map(|_| ()),
         "minecraft:lodestone_tracker" => lodestone_tracker(t).map(|_| ()),
@@ -1005,6 +1012,144 @@ pub fn suggest_predicate(builder: &mut SuggestionsBuilder, reg: &Registries) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pet_variant_holders_validate_command_assignment_and_equality_predicates() {
+        use super::{Reader, Registries, parse_predicate, parse_stack};
+        use crate::args::RegistryIds;
+        let mut reg = Registries {
+            items: vec!["minecraft:stone".into()],
+            ..Default::default()
+        };
+        for (component, registry) in [
+            ("minecraft:cat/sound_variant", "minecraft:cat_sound_variant"),
+            ("minecraft:cat/variant", "minecraft:cat_variant"),
+            (
+                "minecraft:wolf/sound_variant",
+                "minecraft:wolf_sound_variant",
+            ),
+            ("minecraft:wolf/variant", "minecraft:wolf_variant"),
+        ] {
+            reg.persistent_components.push(component.into());
+            reg.by_registry.insert(
+                registry.into(),
+                RegistryIds {
+                    ids: vec!["example:custom/pet".into()],
+                    tags: vec!["example:pets".into()],
+                },
+            );
+        }
+        reg.by_registry.insert(
+            "minecraft:data_component_type".into(),
+            RegistryIds {
+                ids: reg.persistent_components.clone(),
+                tags: vec![],
+            },
+        );
+        for component in &reg.persistent_components {
+            for parser in [parse_stack, parse_predicate] {
+                let input = format!("stone[{component}=\"example:custom/pet\"]");
+                let mut reader = Reader::new(&input);
+                assert!(parser(&mut reader, &reg).is_ok(), "{input}");
+                assert_eq!(reader.cursor, input.len());
+                for value in [
+                    "\"example:missing\"",
+                    "\"#example:pets\"",
+                    "{id:\"example:custom/pet\"}",
+                    "1",
+                ] {
+                    let input = format!("stone[{component}={value}]");
+                    assert!(parser(&mut Reader::new(&input), &reg).is_err(), "{input}");
+                }
+                let input = format!("stone[!{component}]");
+                assert!(parser(&mut Reader::new(&input), &reg).is_ok(), "{input}");
+            }
+        }
+    }
+
+    #[test]
+    fn pet_variant_holders_use_the_supplied_registry_and_normalize_identifiers() {
+        use super::{Registries, Tag, decoded_component_value};
+        use crate::args::RegistryIds;
+        use horizon_core::nbt::JavaString;
+
+        // DataComponents -> each variant CODEC -> RegistryFixedCodec, not DIRECT_CODEC.
+        for (component, registry, builtin) in [
+            (
+                "minecraft:cat/sound_variant",
+                "minecraft:cat_sound_variant",
+                "classic",
+            ),
+            ("minecraft:cat/variant", "minecraft:cat_variant", "tabby"),
+            (
+                "minecraft:wolf/sound_variant",
+                "minecraft:wolf_sound_variant",
+                "classic",
+            ),
+            ("minecraft:wolf/variant", "minecraft:wolf_variant", "pale"),
+        ] {
+            let mut reg = Registries::default();
+            assert!(
+                decoded_component_value(component, &Tag::String(builtin.into()), &reg).is_err()
+            );
+            reg.by_registry.insert(
+                registry.into(),
+                RegistryIds {
+                    ids: vec![
+                        format!("minecraft:{builtin}"),
+                        "example:custom/pet".into(),
+                        "minecraft:".into(),
+                    ],
+                    tags: vec!["example:known_tag".into()],
+                },
+            );
+            for raw in [
+                builtin.to_owned(),
+                format!(":{builtin}"),
+                format!("minecraft:{builtin}"),
+            ] {
+                assert_eq!(
+                    decoded_component_value(component, &Tag::String(raw.as_str().into()), &reg)
+                        .unwrap(),
+                    Tag::String(format!("minecraft:{builtin}").as_str().into()),
+                );
+            }
+            assert_eq!(
+                decoded_component_value(component, &Tag::String("example:custom/pet".into()), &reg)
+                    .unwrap(),
+                Tag::String("example:custom/pet".into()),
+            );
+            // Identifier accepts an empty path, but it must still resolve in the snapshot.
+            assert_eq!(
+                decoded_component_value(component, &Tag::String("".into()), &reg).unwrap(),
+                Tag::String("minecraft:".into()),
+            );
+            for value in [
+                Tag::String("example:missing".into()),
+                Tag::String("example:known_tag".into()),
+                Tag::String("#example:known_tag".into()),
+                Tag::String("EXAMPLE:custom/pet".into()),
+                Tag::String("example:Custom/pet".into()),
+                Tag::String("..:custom/pet".into()),
+                Tag::String("example:custom:pet".into()),
+                Tag::String(JavaString(vec![0xd800])),
+                Tag::String("é".into()),
+                Tag::Int(1),
+                Tag::Float(f32::NAN.to_bits()),
+                Tag::List(vec![Tag::String(builtin.into())]),
+                Tag::compound([("id", Tag::String(builtin.into()))]),
+                Tag::compound([("asset_id", Tag::String("entity/cat/cat_tabby".into()))]),
+            ] {
+                assert!(
+                    decoded_component_value(component, &value, &reg).is_err(),
+                    "{component}: {value:?}"
+                );
+                assert!(decode_component(component, &value, &reg).is_err());
+            }
+            reg.by_registry.get_mut(registry).unwrap().ids.clear();
+            assert!(decode_component(component, &Tag::String(builtin.into()), &reg).is_err());
+        }
+    }
+
     #[test]
     fn cushion_color_codec_rejects_non_string_and_noncanonical_names() {
         use super::{Registries, Tag, decoded_component_value};
