@@ -8,6 +8,7 @@ use super::codec::{either, is_number, not_map, snbt};
 use super::packrat::{Grammar, Reason, State, Sugg, Term, Value, alt, ch, opt, seq};
 use super::{CmdResult, CommandError, Reader, SuggestionsBuilder};
 use horizon_core::nbt::{Compound, Tag};
+use horizon_items::properties::swing_animation::SwingAnimation;
 use std::rc::Rc;
 
 fn int_of(t: &Tag) -> Option<i64> {
@@ -33,12 +34,20 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:custom_name",
     "minecraft:item_name",
     "minecraft:block_entity_data",
+    "minecraft:attack_animation",
 ];
 
 /// Validate and decode a component into the value representation shared with stacks.
 /// Registered components without a shared decoder retain their exact stored value.
 /// Registration is checked by the caller; this helper only rejects failed decodes.
 pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Result<Tag, String> {
+    if id == "minecraft:attack_animation" {
+        return SwingAnimation::decode(value)
+            .map(SwingAnimation::to_tag)
+            .ok_or_else(|| {
+                "Invalid minecraft:attack_animation: expected a swing animation record".into()
+            });
+    }
     if !DECODED_COMPONENTS.contains(&id) {
         return Ok(value.clone());
     }
@@ -83,6 +92,9 @@ pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Resul
 /// The codecs of the item components commands commonly set.
 pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), String> {
     match id {
+        "minecraft:attack_animation" => SwingAnimation::decode(t).map(|_| ()).ok_or_else(|| {
+            "Invalid minecraft:attack_animation: expected a swing animation record".into()
+        }),
         "minecraft:damage" | "minecraft:repair_cost" => {
             let v = int_of(t).ok_or("Not a number")?;
             if v < 0 {

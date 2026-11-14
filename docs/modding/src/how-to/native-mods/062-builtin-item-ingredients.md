@@ -54,9 +54,18 @@ Native registrations retain their persistent NBT validation contract.
 
 The shared decoder currently covers `damage`, `repair_cost`, `max_damage`,
 `max_stack_size`, `rarity`, `enchantments`, `stored_enchantments`, `custom_name`,
-`item_name`, and `block_entity_data` in the `minecraft` namespace. The other
-112 registered built-ins use stored-value matching while their shared decoders
-are added incrementally in **#3875**. Their absence is not a load refusal.
+`item_name`, `block_entity_data`, and `attack_animation` in the `minecraft`
+namespace. The other 111 registered built-ins use stored-value matching while
+their shared decoders are added incrementally in **#3875**. Their absence is not
+a load refusal.
+
+`attack_animation` accepts a record with optional `type` (`none`, `whack`, or
+`stab`, default `whack`) and `duration` (non-negative integer, default 6).
+NBT numbers use Java's integer conversion before validation; unknown record
+fields do not affect equality. Omitted fields compare equal to explicit
+defaults. Malformed present fields reject the recipe, not sibling recipes.
+Matching includes inherited item prototypes and honors explicit overrides and
+removals without allocating for candidate stacks.
 
 Component ingredient displays contain the patch, including removals. Difference
 lists retain the base list and remove only items whose default stack passes the

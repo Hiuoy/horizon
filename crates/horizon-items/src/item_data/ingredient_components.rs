@@ -40,6 +40,16 @@ pub fn removed(stack: &ItemStack, id: &str) -> bool {
 /// Presence is checked by the caller, so empty decoded enchantment maps compare equal.
 pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
     match id {
+        "minecraft:attack_animation" => {
+            use crate::properties::swing_animation::SwingAnimation;
+            let animation = |stack: &ItemStack| {
+                stack
+                    .data()
+                    .and_then(|data| data.other(id))
+                    .and_then(SwingAnimation::decode)
+            };
+            animation(a).is_some_and(|expected| animation(b) == Some(expected))
+        }
         "minecraft:damage" => a.damage == b.damage,
         "minecraft:repair_cost" => {
             a.data().map_or(0, |d| d.repair_cost) == b.data().map_or(0, |d| d.repair_cost)
