@@ -40,6 +40,26 @@ pub fn removed(stack: &ItemStack, id: &str) -> bool {
 /// Presence is checked by the caller, so empty decoded enchantment maps compare equal.
 pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
     match id {
+        "minecraft:container_loot" => {
+            fn fields(stack: &ItemStack) -> Option<(&Tag, i64)> {
+                stack
+                    .data()
+                    .and_then(|d| d.other("minecraft:container_loot"))
+                    .and_then(|tag| container_loot_fields(tag).ok())
+            }
+            match (fields(a), fields(b)) {
+                (Some((table_a, seed_a)), Some((table_b, seed_b))) => {
+                    seed_a == seed_b && identifier_equal(Some(table_a), Some(table_b))
+                }
+                _ => false,
+            }
+        }
+
+        "minecraft:tooltip_display" => tooltip_display_equal(a, b),
+        "minecraft:lodestone_tracker" => lodestone_tracker_equal(
+            a.data().and_then(|d| d.other(id)),
+            b.data().and_then(|d| d.other(id)),
+        ),
         "minecraft:recipes" => recipe_keys_equal(
             a.data().and_then(|d| d.other(id)),
             b.data().and_then(|d| d.other(id)),
@@ -194,11 +214,13 @@ pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
             }
         }
         "minecraft:rarity" => rarity(a) == rarity(b),
-        "minecraft:tooltip_display" => tooltip_display_equal(a, b),
         "minecraft:ominous_bottle_amplifier" => ominous_amplifier(a) == ominous_amplifier(b),
         // DyeColor.CODEC's canonical NbtOps value is its exact serialized name.
         // Live stacks retain these colors in `other`; borrow UTF-16 without palette scans.
-        "minecraft:dye"
+        "minecraft:tropical_fish/base_color"
+        | "minecraft:tropical_fish/pattern_color"
+        | "minecraft:cushion/color"
+        | "minecraft:dye"
         | "minecraft:wolf/collar"
         | "minecraft:cat/collar"
         | "minecraft:shulker/color"
@@ -592,4 +614,134 @@ mod tests {
         b.data_mut().enchantments[0].1 = 3;
         assert!(!component_equal("minecraft:enchantments", &a, &b));
     }
+}
+
+/// Read the record without cloning its payload. Unknown record fields are ignored;
+/// present malformed optional fields are errors, not their absent-field defaults.
+pub fn lodestone_tracker(value: &Tag) -> Result<LodestoneTracker<'_>, &'static str> {
+    // Avoid even a first-use allocation of Tag::get's thread-local UTF-16 key.
+    fn field<'a>(value: &'a Tag, name: &str) -> Option<&'a Tag> {
+        let Tag::Compound(fields) = value else {
+            return None;
+        };
+        fields
+            .iter()
+            .find_map(|(key, value)| java_is(key, name).then_some(value))
+    }
+    if !matches!(value, Tag::Compound(_)) {
+        return Err("Not a map");
+    }
+    let target = match field(value, "target") {
+        None | Some(Tag::End) => None,
+        Some(target @ Tag::Compound(_)) => {
+            let dimension = field(target, "dimension").ok_or("Missing target dimension")?;
+            if !matches!(dimension, Tag::String(_)) {
+                return Err("Target dimension is not a string");
+            }
+            let pos = block_pos(field(target, "pos").ok_or("Missing target pos")?)?;
+            Some((dimension, pos))
+        }
+        Some(_) => return Err("Target is not a map"),
+    };
+    let tracked = match field(value, "tracked") {
+        None | Some(Tag::End) => true,
+        Some(value) => horizon_world::datafix::dynamic::as_bool_opt(Some(value))
+            .ok_or("Tracked is not a number")?,
+    };
+    Ok(LodestoneTracker { target, tracked })
+}
+
+/// `BlockPos.CODEC`/`NbtOps.getIntStream`: exactly three boxed-number int values,
+/// including all collection-tag forms, with no world-coordinate bounds.
+fn block_pos(value: &Tag) -> Result<[i32; 3], &'static str> {
+    fn three<T>(values: &[T]) -> Result<&[T; 3], &'static str> {
+        values
+            .try_into()
+            .map_err(|_| "Input is not a list of 3 ints")
+    }
+    Ok(match value {
+        Tag::IntArray(values) => *three(values)?,
+        Tag::ByteArray(values) => three(values)?.map(|value| i32::from(value as i8)),
+        Tag::LongArray(values) => three(values)?.map(|value| value as i32),
+        Tag::List(values) => {
+            let values = three(values)?;
+            let mut pos = [0; 3];
+            for (slot, value) in pos.iter_mut().zip(values) {
+                *slot = horizon_world::datafix::dynamic::as_number(value)
+                    .ok_or("Pos contains a non-number")?
+                    .int_value();
+            }
+            pos
+        }
+        _ => return Err("Pos is not a list"),
+    })
+}
+
+fn lodestone_tracker_equal(a: Option<&Tag>, b: Option<&Tag>) -> bool {
+    let (Some(a), Some(b)) = (a, b) else {
+        return false;
+    };
+    let (Ok(a), Ok(b)) = (lodestone_tracker(a), lodestone_tracker(b)) else {
+        return false;
+    };
+    a.tracked == b.tracked
+        && match (a.target, b.target) {
+            (None, None) => true,
+            (Some((a, pos)), Some((b, other))) => {
+                pos == other && identifier_equal(Some(a), Some(b))
+            }
+            _ => false,
+        }
+}
+
+fn tooltip_display_equal(a: &ItemStack, b: &ItemStack) -> bool {
+    use crate::properties::tooltip_display::TooltipDisplay;
+    fn raw(stack: &ItemStack) -> Option<&Tag> {
+        stack
+            .data()
+            .and_then(|data| data.other("minecraft:tooltip_display"))
+    }
+    match (raw(a), raw(b)) {
+        (Some(a), Some(b)) => match (TooltipDisplay::parse(a), TooltipDisplay::parse(b)) {
+            (Some(a), Some(b)) => a.equal(b),
+            _ => false,
+        },
+        (Some(value), None) => {
+            b.data().is_some_and(|data| data.ominous_banner)
+                && TooltipDisplay::parse(value).is_some_and(|value| value.is_ominous())
+        }
+        (None, Some(value)) => {
+            a.data().is_some_and(|data| data.ominous_banner)
+                && TooltipDisplay::parse(value).is_some_and(|value| value.is_ominous())
+        }
+        (None, None) => {
+            a.data().is_some_and(|data| data.ominous_banner)
+                == b.data().is_some_and(|data| data.ominous_banner)
+        }
+    }
+}
+
+pub struct LodestoneTracker<'a> {
+    pub target: Option<(&'a Tag, [i32; 3])>,
+    pub tracked: bool,
+}
+
+/// Borrow `SeededContainerLoot.CODEC`'s record fields, ignoring unknown fields.
+/// The caller validates/normalizes the required `Identifier.CODEC` string at load;
+/// live comparisons use `identifier_equal` without allocating.
+pub fn container_loot_fields(value: &Tag) -> Result<(&Tag, i64), &'static str> {
+    if !matches!(value, Tag::Compound(_)) {
+        return Err("Not a map");
+    }
+    let table = value.get("loot_table").ok_or("Missing loot_table")?;
+    if !matches!(table, Tag::String(_)) {
+        return Err("loot_table: Not a string");
+    }
+    let seed = match value.get("seed") {
+        None | Some(Tag::End) => 0,
+        Some(seed) => horizon_world::datafix::dynamic::as_number(seed)
+            .ok_or("seed: Not a number")?
+            .long_value(),
+    };
+    Ok((table, seed))
 }

@@ -16,7 +16,7 @@ impl<'a> TooltipDisplay<'a> {
             return None;
         };
         let hide_tooltip = match value.get("hide_tooltip") {
-            None => false,
+            None | Some(Tag::End) => false,
             Some(Tag::Byte(v)) => *v != 0,
             Some(Tag::Short(v)) => *v != 0,
             Some(Tag::Int(v)) => *v != 0,
@@ -28,7 +28,7 @@ impl<'a> TooltipDisplay<'a> {
         // NbtOps accepts all CollectionTags. Numeric arrays can only decode as an
         // empty component list, since each nonempty element must be a string key.
         let hidden = match value.get("hidden_components") {
-            None => &[][..],
+            None | Some(Tag::End) => &[][..],
             Some(Tag::List(values)) => values.as_slice(),
             Some(Tag::ByteArray(values)) if values.is_empty() => &[],
             Some(Tag::IntArray(values)) if values.is_empty() => &[],

@@ -156,13 +156,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn number_and_provider_codecs_preserve_java_equality_and_identifier_rules() {
+    fn identifier_matches_snapshot_keys_without_allocating() {
         let key = Tag::String("stone".into());
         let key = identifier(&key).unwrap();
         assert!(key.matches_str("minecraft:stone"));
         assert!(key.matches_str(":stone"));
         assert!(!key.matches_str("mod:stone"));
         assert!(!key.matches_str("minecraft:stone_extra"));
+        for (raw, snapshot) in [
+            ("mod:path", "mod:path"),
+            ("minecraft:", "minecraft:"),
+            (":", "minecraft:"),
+        ] {
+            let raw = Tag::String(raw.into());
+            assert!(identifier(&raw).unwrap().matches_str(snapshot));
+        }
+        let raw = Tag::String("stone".into());
+        let id = identifier(&raw).unwrap();
+        assert!(!id.matches_str("minecraft:stone:extra"));
+        assert!(!id.matches_str("minecraft:stöne"));
+    }
+
+    #[test]
+    fn number_and_provider_codecs_preserve_java_equality_and_identifier_rules() {
         assert_eq!(
             int(&Tag::Long(4_294_967_297)).unwrap().to_tag(),
             Tag::Int(1)

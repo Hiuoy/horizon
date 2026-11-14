@@ -1358,7 +1358,6 @@ fn cushion_color_components_compile_recipes_and_match_live_defaults() {
     }
 }
 
-
 #[test]
 fn malformed_cushion_color_payloads_reject_whole_recipes_with_component_errors() {
     let items = Items::empty();
@@ -1408,7 +1407,6 @@ fn malformed_cushion_color_payloads_reject_whole_recipes_with_component_errors()
         assert!(recipes.by_type.values().all(|recipes| recipes.is_empty()));
     }
 }
-
 
 #[test]
 fn tropical_fish_base_color_recipes_match_independent_colors_and_defaults() {
@@ -1561,7 +1559,6 @@ fn tropical_fish_base_color_recipes_match_independent_colors_and_defaults() {
     ));
 }
 
-
 #[test]
 fn malformed_tropical_fish_base_colors_omit_recipes_with_component_errors() {
     let items = Items::empty();
@@ -1611,7 +1608,6 @@ fn malformed_tropical_fish_base_colors_omit_recipes_with_component_errors() {
         assert!(recipes.by_type.values().all(|recipes| recipes.is_empty()));
     }
 }
-
 
 #[test]
 fn tropical_fish_pattern_color_recipes_match_defaults_removals_and_distinct_fields() {
@@ -1765,7 +1761,6 @@ fn tropical_fish_pattern_color_recipes_match_defaults_removals_and_distinct_fiel
     );
 }
 
-
 #[test]
 fn tropical_fish_pattern_color_accepts_all_canonical_names_without_normalizing_case() {
     let items = Items::empty();
@@ -1803,7 +1798,6 @@ fn tropical_fish_pattern_color_accepts_all_canonical_names_without_normalizing_c
         assert!(ingredient.test_in(&context, &stack), "{color}");
     }
 }
-
 
 #[test]
 fn malformed_tropical_fish_pattern_colors_reject_whole_recipes_with_component_errors() {
@@ -1855,4 +1849,3 @@ fn malformed_tropical_fish_pattern_colors_reject_whole_recipes_with_component_er
         assert!(recipes.by_type.values().all(|recipes| recipes.is_empty()));
     }
 }
-
