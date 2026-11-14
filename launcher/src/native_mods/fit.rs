@@ -360,7 +360,7 @@ pub fn did_not_build(name: &str) -> String {
 /// until the player chooses.
 pub fn did_not_build_pending(name: &str) -> String {
     trf(
-        "{mod} looked compatible with this game but didn't build. It stays on until you choose; this is for {mod}'s author to fix.",
+        "{mod} looked compatible with this game but didn't build. It stays on until you choose in the Build panel; this is for {mod}'s author to fix.",
         &[("mod", name)],
     )
 }
@@ -419,12 +419,14 @@ pub fn back_up_and_update(worlds: usize) -> &'static str {
 }
 
 /// [`back_up_and_update`] on the Build panel, where nothing is being updated.
-pub fn back_up_and_build(worlds: usize, unbuilt: bool) -> &'static str {
+pub fn back_up_and_build(worlds: usize, mods: usize, unbuilt: usize) -> &'static str {
     match (worlds, unbuilt) {
-        (1, false) => tr("Back up this world and build without what doesn't fit"),
-        (_, false) => tr("Back up these worlds and build without what doesn't fit"),
-        (1, true) => tr("Back up this world and build without what didn't build"),
-        (_, true) => tr("Back up these worlds and build without what didn't build"),
+        (1, 0) => tr("Back up this world and build without what doesn't fit"),
+        (_, 0) => tr("Back up these worlds and build without what doesn't fit"),
+        (1, n) if n == mods => tr("Back up this world and build without what didn't build"),
+        (_, n) if n == mods => tr("Back up these worlds and build without what didn't build"),
+        (1, _) => tr("Back up this world and build without those mods"),
+        (_, _) => tr("Back up these worlds and build without those mods"),
     }
 }
 
@@ -449,7 +451,7 @@ pub fn did_not_build_last(name: &str) -> String {
 /// [`actions`] while the stop for worlds saved with `name` is on screen.
 pub fn actions_pending(name: &str) -> String {
     trf(
-        "The build is stopped until you choose; {mod} stays on until then.",
+        "The build is stopped until you choose in the Build panel; {mod} stays on until then.",
         &[("mod", name)],
     )
 }

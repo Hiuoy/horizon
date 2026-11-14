@@ -1692,6 +1692,7 @@ fn guard_worlds(
             unbuilt: left
                 .iter()
                 .filter(|l| matches!(l.why, isolate::Why::DidNotBuild))
+                .filter(|l| at_stake.iter().any(|(_, mods)| mods.contains(&l.id)))
                 .map(|l| l.id.clone())
                 .collect(),
             backups: home.join("backups"),

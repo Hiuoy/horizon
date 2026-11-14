@@ -449,7 +449,8 @@ impl Launcher {
                             "native-worlds-back-up",
                             native_mods::fit::back_up_and_build(
                                 stake.worlds.len(),
-                                !stake.unbuilt.is_empty(),
+                                stake.mods.len(),
+                                stake.unbuilt.len(),
                             ),
                             Kind::Secondary,
                             &t,
@@ -744,7 +745,11 @@ impl Launcher {
             let build_now = ui::menu_item(
                 "route-build",
                 tr("Build now").into(),
-                tr("Builds the game with your mods").to_string(),
+                if worlds_pending {
+                    tr("Choose what to do about your worlds first").to_string()
+                } else {
+                    tr("Builds the game with your mods").to_string()
+                },
                 busy || state == State::NoMods || worlds_pending,
                 &t,
             )

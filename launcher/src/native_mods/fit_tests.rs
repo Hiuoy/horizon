@@ -273,22 +273,26 @@ fn an_update_says_how_many_mods_fit_and_which_will_be_switched_off() {
 #[test]
 fn the_worlds_buttons_and_the_stopped_mod_say_what_is_so() {
     assert_eq!(
-        back_up_and_build(1, false),
+        back_up_and_build(1, 1, 0),
         "Back up this world and build without what doesn't fit"
     );
     assert_eq!(
-        back_up_and_build(3, false),
+        back_up_and_build(3, 1, 0),
         "Back up these worlds and build without what doesn't fit"
     );
     assert_eq!(
-        back_up_and_build(1, true),
+        back_up_and_build(1, 2, 2),
         "Back up this world and build without what didn't build"
+    );
+    assert_eq!(
+        back_up_and_build(2, 2, 1),
+        "Back up these worlds and build without those mods"
     );
     assert_eq!(back_up_and_update(1), "Back up this world and update");
     assert_eq!(back_up_and_update(2), "Back up these worlds and update");
     assert_eq!(
         actions_pending("Greeter"),
-        "The build is stopped until you choose; Greeter stays on until then."
+        "The build is stopped until you choose in the Build panel; Greeter stays on until then."
     );
     assert!(did_not_build_pending("Greeter").contains("stays on until you choose"));
     assert!(did_not_build_last("Greeter").contains("didn't build the last time"));
