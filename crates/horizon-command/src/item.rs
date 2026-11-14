@@ -29,6 +29,7 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:max_stack_size",
     "minecraft:rarity",
     "minecraft:dye",
+    "minecraft:cushion/color",
     "minecraft:enchantments",
     "minecraft:stored_enchantments",
     "minecraft:custom_name",
@@ -118,7 +119,7 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
         },
         // DyeColor.CODEC -> StringRepresentable.fromEnum: ordinary NbtOps uses
         // exact names, not the ordinal codec selected by compressMaps().
-        "minecraft:dye" => match t {
+        "minecraft:dye" | "minecraft:cushion/color" => match t {
             Tag::String(name) => {
                 if horizon_items::firework::DYE_FIREWORK_COLORS
                     .iter()
@@ -761,6 +762,47 @@ mod tests {
         ] {
             assert!(decoded_component_value("minecraft:dye", &value, &registry).is_err());
         }
+    }
+
+    #[test]
+    fn cushion_color_codec_rejects_non_string_and_noncanonical_names() {
+        use super::{Registries, Tag, decoded_component_value};
+        use horizon_core::nbt::JavaString;
+        let registry = Registries::default();
+        assert!(super::DECODED_COMPONENTS.contains(&"minecraft:cushion/color"));
+        for value in [
+            Tag::End,
+            Tag::String("RED".into()),
+            Tag::String("silver".into()),
+            Tag::String("minecraft:red".into()),
+            Tag::String(" red".into()),
+            Tag::String("".into()),
+            Tag::String(JavaString(vec![0xd800])),
+            Tag::String(JavaString(vec![114, 101, 100, 0xd800])),
+            Tag::Byte(14),
+            Tag::Short(14),
+            Tag::Long(14),
+            Tag::Float(14.0f32.to_bits()),
+            Tag::Double(14.0f64.to_bits()),
+            Tag::List(vec![]),
+            Tag::Compound(Default::default()),
+            Tag::ByteArray(vec![]),
+            Tag::IntArray(vec![]),
+            Tag::LongArray(vec![]),
+        ] {
+            assert!(decoded_component_value("minecraft:cushion/color", &value, &registry).is_err());
+        }
+        for ordinal in -1..=16 {
+            assert!(
+                decoded_component_value("minecraft:cushion/color", &Tag::Int(ordinal), &registry)
+                    .is_err()
+            );
+        }
+        let value = Tag::String("light_gray".into());
+        assert_eq!(
+            decoded_component_value("minecraft:cushion/color", &value, &registry).unwrap(),
+            value
+        );
     }
 
     #[test]
