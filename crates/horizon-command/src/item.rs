@@ -65,6 +65,7 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:item_model",
     "minecraft:lodestone_tracker",
     "minecraft:damage_resistant",
+    "minecraft:use_effects",
     "minecraft:block_entity_data",
     "minecraft:enchantable",
     "minecraft:ominous_bottle_amplifier",
@@ -144,6 +145,23 @@ pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Resul
     }
     if id == "minecraft:damage_resistant" {
         return component_values::damage_resistant(value, reg);
+    }
+    if id == "minecraft:use_effects" {
+        let (can_sprint, interact_vibrations, speed) =
+            horizon_items::item_data::ingredient_components::use_effects(value)
+                .map_err(str::to_owned)?;
+        return Ok(Tag::Compound(
+            [
+                ("can_sprint".into(), Tag::Byte(i8::from(can_sprint))),
+                (
+                    "interact_vibrations".into(),
+                    Tag::Byte(i8::from(interact_vibrations)),
+                ),
+                ("speed_multiplier".into(), Tag::Float(speed)),
+            ]
+            .into_iter()
+            .collect(),
+        ));
     }
     decode_component(id, value, reg)?;
     if id == "minecraft:block_entity_data" {
@@ -332,6 +350,10 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
         "minecraft:item_model" => identifier_value(t).map(|_| ()),
         "minecraft:item_model" => component_values::identifier(t).map(|_| ()),
         "minecraft:damage_resistant" => component_values::damage_resistant(t, reg).map(|_| ()),
+        "minecraft:item_model" => item_model(t).map(|_| ()),
+        "minecraft:use_effects" => horizon_items::item_data::ingredient_components::use_effects(t)
+            .map(|_| ())
+            .map_err(str::to_owned),
         // TypedEntityData.codec: the type is the compound's id.
         "minecraft:block_entity_data" => match t {
             Tag::Compound(c) => match c.get(&"id".into()) {

@@ -249,6 +249,15 @@ pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
             a.data().and_then(|d| d.other(id)),
             b.data().and_then(|d| d.other(id)),
         ),
+        "minecraft:use_effects" => {
+            match (
+                a.data().and_then(|d| d.other(id)).map(use_effects),
+                b.data().and_then(|d| d.other(id)).map(use_effects),
+            ) {
+                (Some(Ok(a)), Some(Ok(b))) => a == b,
+                _ => false,
+            }
+        }
         "minecraft:rarity" => rarity(a) == rarity(b),
         "minecraft:ominous_bottle_amplifier" => ominous_amplifier(a) == ominous_amplifier(b),
         // DyeColor.CODEC's canonical NbtOps value is its exact serialized name.
@@ -308,6 +317,34 @@ pub fn validate_compostable(value: &Tag) -> Result<(), String> {
 pub fn decoded_compostable(value: &Tag) -> Result<Tag, String> {
     let layers = compostable_layers(value).map_err(str::to_owned)?.to_tag();
     Ok(Tag::compound([("layers", layers)]))
+    }
+/// `UseEffects.CODEC`: strict optional fields, ignored unknown fields and NbtOps numbers.
+/// The float is returned as bits for Java record equality (including signed zero).
+pub fn use_effects(value: &Tag) -> Result<(bool, bool, u32), &'static str> {
+    if !matches!(value, Tag::Compound(_)) {
+        return Err("Not a map");
+    }
+    let can_sprint = value
+        .get("can_sprint")
+        .map(component_bool)
+        .unwrap_or(Some(false))
+        .ok_or("can_sprint: Not a number")?;
+    let interact_vibrations = value
+        .get("interact_vibrations")
+        .map(component_bool)
+        .unwrap_or(Some(true))
+        .ok_or("interact_vibrations: Not a number")?;
+    let speed = value
+        .get("speed_multiplier")
+        .map(crate::properties::component_float)
+        .unwrap_or(Some(0.2))
+        .ok_or("speed_multiplier: Not a number")?;
+    // DFU Codec.floatRange uses checkRange/Float.compareTo, not primitive `<`.
+    // Thus -0.0 is below the lower bound, and NaN is above the upper bound.
+    if speed.is_sign_negative() || !(0.0..=1.0).contains(&speed) {
+        return Err("speed_multiplier: Value outside of range [0:1]");
+    }
+    Ok((can_sprint, interact_vibrations, speed.to_bits()))
 }
 
 /// Exact stored-value comparison, including the fields removed from `other` by decoding.
