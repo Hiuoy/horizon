@@ -1,5 +1,5 @@
 //! Borrowed live component queries for decoded ingredient predicates.
-use super::component_values::{damage_resistant_equal, identifier_equal};
+use super::component_values::damage_resistant_equal;
 use super::*;
 
 /// Visit present component names without serializing or allocating.
@@ -121,7 +121,7 @@ pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
                 (Some(a), Some(b)) => a == b,
                 _ => false,
             }
-    }
+        }
         "minecraft:attack_animation" => {
             use crate::properties::swing_animation::SwingAnimation;
             let animation = |stack: &ItemStack| {
@@ -131,7 +131,7 @@ pub fn component_equal(id: &str, a: &ItemStack, b: &ItemStack) -> bool {
                     .and_then(SwingAnimation::decode)
             };
             animation(a).is_some_and(|expected| animation(b) == Some(expected))
-    }
+        }
         "minecraft:attack_range" => {
             let decoded = |stack: &ItemStack| {
                 stack
@@ -329,7 +329,7 @@ pub fn validate_compostable(value: &Tag) -> Result<(), String> {
 pub fn decoded_compostable(value: &Tag) -> Result<Tag, String> {
     let layers = compostable_layers(value).map_err(str::to_owned)?.to_tag();
     Ok(Tag::compound([("layers", layers)]))
-    }
+}
 /// `UseEffects.CODEC`: strict optional fields, ignored unknown fields and NbtOps numbers.
 /// The float is returned as bits for Java record equality (including signed zero).
 pub fn use_effects(value: &Tag) -> Result<(bool, bool, u32), &'static str> {
@@ -338,16 +338,19 @@ pub fn use_effects(value: &Tag) -> Result<(bool, bool, u32), &'static str> {
     }
     let can_sprint = value
         .get("can_sprint")
+        .filter(|v| !matches!(v, Tag::End))
         .map(component_bool)
         .unwrap_or(Some(false))
         .ok_or("can_sprint: Not a number")?;
     let interact_vibrations = value
         .get("interact_vibrations")
+        .filter(|v| !matches!(v, Tag::End))
         .map(component_bool)
         .unwrap_or(Some(true))
         .ok_or("interact_vibrations: Not a number")?;
     let speed = value
         .get("speed_multiplier")
+        .filter(|v| !matches!(v, Tag::End))
         .map(crate::properties::component_float)
         .unwrap_or(Some(0.2))
         .ok_or("speed_multiplier: Not a number")?;

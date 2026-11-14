@@ -57,8 +57,12 @@ impl SwingAnimation {
         };
         let kind = value
             .get("type")
+            .filter(|v| !matches!(v, Tag::End))
             .map_or(Some(SwingAnimationType::Whack), SwingAnimationType::decode)?;
-        let duration = value.get("duration").map_or(Some(6), component_int)?;
+        let duration = value
+            .get("duration")
+            .filter(|v| !matches!(v, Tag::End))
+            .map_or(Some(6), component_int)?;
         (duration >= 0).then_some(Self { kind, duration })
     }
 

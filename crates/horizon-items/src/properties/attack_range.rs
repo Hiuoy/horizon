@@ -31,8 +31,8 @@ pub fn decode(value: &Tag) -> Option<[Float<'static>; 6]> {
                 .then_some(value)
         });
         let decoded = match value {
+            Some(Tag::End) | None => Float::Constant(default),
             Some(value) => float(value)?,
-            None => Float::Constant(default),
         };
         let Float::Constant(number) = decoded else {
             return None;

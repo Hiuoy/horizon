@@ -8,9 +8,9 @@ use super::codec::{either, is_number, not_map, snbt};
 use super::packrat::{Grammar, Reason, State, Sugg, Term, Value, alt, ch, opt, seq};
 use super::{CmdResult, CommandError, Reader, SuggestionsBuilder};
 use horizon_core::nbt::{Compound, Tag};
-use horizon_world::datafix::dynamic::as_number;
-use horizon_items::properties::swing_animation::SwingAnimation;
 use horizon_items::item_data::component_values;
+use horizon_items::properties::swing_animation::SwingAnimation;
+use horizon_world::datafix::dynamic::as_number;
 use std::rc::Rc;
 
 fn int_of(t: &Tag) -> Option<i64> {
@@ -74,7 +74,6 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:dyed_color",
     "minecraft:attack_animation",
     "minecraft:attack_range",
-    "minecraft:fox/variant",
     "minecraft:rabbit/variant",
     "minecraft:horse/variant",
     "minecraft:llama/variant",
@@ -146,7 +145,6 @@ pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Resul
     }
     if let Some(registry) = horizon_items::properties::pet_variants::registry(id) {
         return horizon_items::properties::pet_variants::decode(registry, value, reg);
-        return component_values::identifier(value);
     }
     if id == "minecraft:damage_resistant" {
         return component_values::damage_resistant(value, reg);
@@ -352,8 +350,6 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
             Ok(())
         }
         "minecraft:rarity" => string_enum(t, &["common", "uncommon", "rare", "epic"]),
-        // Fox.Variant.CODEC uses StringRepresentable names under ordinary NbtOps.
-        "minecraft:fox/variant" => string_enum(t, &["red", "snow"]),
         // Rabbit.Variant.CODEC, not the numeric RabbitType legacy codec.
         "minecraft:rabbit/variant" => string_enum(
             t,
@@ -365,6 +361,8 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
                 "gold",
                 "salt",
                 "evil",
+            ],
+        ),
         // equine.Variant.CODEC uses StringRepresentable names under ordinary NbtOps.
         "minecraft:horse/variant" => string_enum(
             t,
@@ -388,9 +386,7 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
             .ok_or_else(|| "Not a number".into()),
         "minecraft:custom_name" | "minecraft:item_name" => super::component::decode(t),
         "minecraft:item_model" => identifier_value(t).map(|_| ()),
-        "minecraft:item_model" => component_values::identifier(t).map(|_| ()),
         "minecraft:damage_resistant" => component_values::damage_resistant(t, reg).map(|_| ()),
-        "minecraft:item_model" => item_model(t).map(|_| ()),
         "minecraft:use_effects" => horizon_items::item_data::ingredient_components::use_effects(t)
             .map(|_| ())
             .map_err(str::to_owned),
