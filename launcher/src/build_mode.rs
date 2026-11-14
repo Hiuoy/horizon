@@ -111,6 +111,16 @@ impl Launcher {
         stop_here(mine, self.native_worlds.as_ref())
     }
 
+    /// A build stopped for worlds at stake: the choice is shown, and the mods that failed to
+    /// compile stay marked past it.
+    pub(super) fn keep_stop(&mut self, stake: &native_mods::AtStake) {
+        self.native_worlds = Some(stake.clone());
+        self.mods.unbuilt = self
+            .native_for
+            .clone()
+            .map(|instance| (instance, stake.unbuilt.clone()));
+    }
+
     /// The selected instance's build card: the build mode, and the build under way or its end.
     pub(super) fn native_build(&self, cx: &mut Context<Self>) -> Option<Div> {
         let t = self.theme;
@@ -625,7 +635,8 @@ impl Launcher {
                 tr("This instance's build waits until it finishes.").to_string(),
             )
         } else if self
-            .native_unbuilt
+            .mods
+            .unbuilt
             .as_ref()
             .is_some_and(|(of, ids)| of == &instance.id && ids.iter().any(|id| id == mod_id))
         {

@@ -287,9 +287,6 @@ struct Launcher {
     /// Mods the last build would have switched off that worlds were saved with: the choice
     /// between staying and backing those worlds up first, shown with `native_error`.
     native_worlds: Option<native_mods::AtStake>,
-    /// The instance and the mods whose compile failed in the last stop: their chips say so until
-    /// the next build attempt, whatever the player chose.
-    native_unbuilt: Option<(String, Vec<String>)>,
     pending_consent: Option<PendingConsent>,
     /// Why the last Allow or Cancel failed, shown inside the dialog that the page is behind.
     consent_error: Option<String>,
@@ -639,7 +636,6 @@ impl Launcher {
             native_done: None,
             native_error: None,
             native_worlds: None,
-            native_unbuilt: None,
             pending_consent: None,
             consent_error: None,
             native_for: None,
@@ -1299,11 +1295,7 @@ impl Launcher {
                             self.request_native_build_consent();
                         }
                         if let native_mods::Failed::Worlds(stake) = &e {
-                            self.native_worlds = Some((**stake).clone());
-                            self.native_unbuilt = self
-                                .native_for
-                                .clone()
-                                .map(|instance| (instance, stake.unbuilt.clone()));
+                            self.keep_stop(stake);
                         }
                         self.native_error = Some(String::from(e));
                     }
