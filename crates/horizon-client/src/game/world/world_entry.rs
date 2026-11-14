@@ -269,6 +269,7 @@ impl Game<'_> {
         api_values::resolve_enchantment_registry(&items)?;
         // Item damage predicates use the same frozen registry as player hurt.
         Arc::make_mut(&mut items.enchantments).bind_damage_catalog(&health.damage);
+        items.bind_component_damage_catalog(&health.damage);
         // The recipe tables, the stations and the recipe book read one folder:
         // hold its files so it is read once.
         let _recipe_files = horizon_client::json_folder::read(&root.join("data/minecraft/recipe"));

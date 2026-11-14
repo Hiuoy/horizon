@@ -8,6 +8,8 @@ use super::codec::{either, is_number, not_map, snbt};
 use super::packrat::{Grammar, Reason, State, Sugg, Term, Value, alt, ch, opt, seq};
 use super::{CmdResult, CommandError, Reader, SuggestionsBuilder};
 use horizon_core::nbt::{Compound, Tag};
+use horizon_items::item_data::component_values;
+use horizon_items::properties::swing_animation::SwingAnimation;
 use horizon_world::datafix::dynamic::as_number;
 use std::rc::Rc;
 
@@ -62,12 +64,19 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:item_name",
     "minecraft:item_model",
     "minecraft:lodestone_tracker",
+    "minecraft:damage_resistant",
+    "minecraft:use_effects",
     "minecraft:block_entity_data",
     "minecraft:enchantable",
     "minecraft:ominous_bottle_amplifier",
     "minecraft:potion_duration_scale",
     "minecraft:minimum_attack_charge",
     "minecraft:dyed_color",
+    "minecraft:attack_animation",
+    "minecraft:attack_range",
+    "minecraft:rabbit/variant",
+    "minecraft:horse/variant",
+    "minecraft:llama/variant",
 ];
 
 /// Validate and decode a component into the value representation shared with stacks.
@@ -76,6 +85,13 @@ pub const DECODED_COMPONENTS: &[&str] = &[
 pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Result<Tag, String> {
     if id == "minecraft:tooltip_display" {
         return tooltip_display(value, reg);
+    }
+    if id == "minecraft:attack_animation" {
+        return SwingAnimation::decode(value)
+            .map(SwingAnimation::to_tag)
+            .ok_or_else(|| {
+                "Invalid minecraft:attack_animation: expected a swing animation record".into()
+            });
     }
     if !DECODED_COMPONENTS.contains(&id) {
         return Ok(value.clone());
@@ -129,6 +145,30 @@ pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Resul
     }
     if let Some(registry) = horizon_items::properties::pet_variants::registry(id) {
         return horizon_items::properties::pet_variants::decode(registry, value, reg);
+    }
+    if id == "minecraft:damage_resistant" {
+        return component_values::damage_resistant(value, reg);
+    }
+    if id == "minecraft:use_effects" {
+        let (can_sprint, interact_vibrations, speed) =
+            horizon_items::item_data::ingredient_components::use_effects(value)
+                .map_err(str::to_owned)?;
+        return Ok(Tag::Compound(
+            [
+                ("can_sprint".into(), Tag::Byte(i8::from(can_sprint))),
+                (
+                    "interact_vibrations".into(),
+                    Tag::Byte(i8::from(interact_vibrations)),
+                ),
+                ("speed_multiplier".into(), Tag::Float(speed)),
+            ]
+            .into_iter()
+            .collect(),
+        ));
+    }
+    if id == "minecraft:attack_range" {
+        return horizon_items::properties::attack_range::normalized(value)
+            .ok_or_else(|| "Invalid attack_range".into());
     }
     decode_component(id, value, reg)?;
     if id == "minecraft:block_entity_data" {
@@ -247,6 +287,12 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
         "minecraft:dyed_color" => horizon_core::color::rgb_color_from_tag(t)
             .map(|_| ())
             .ok_or_else(|| "Expected a number or a list of three numeric RGB channels".into()),
+        "minecraft:attack_animation" => SwingAnimation::decode(t).map(|_| ()).ok_or_else(|| {
+            "Invalid minecraft:attack_animation: expected a swing animation record".into()
+        }),
+        "minecraft:attack_range" => horizon_items::properties::attack_range::decode(t)
+            .map(|_| ())
+            .ok_or_else(|| "Invalid attack_range".into()),
         "minecraft:damage" | "minecraft:repair_cost" => {
             let v = int_of(t).ok_or("Not a number")?;
             if v < 0 {
@@ -304,6 +350,34 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
             Ok(())
         }
         "minecraft:rarity" => string_enum(t, &["common", "uncommon", "rare", "epic"]),
+        // Rabbit.Variant.CODEC, not the numeric RabbitType legacy codec.
+        "minecraft:rabbit/variant" => string_enum(
+            t,
+            &[
+                "brown",
+                "white",
+                "black",
+                "white_splotched",
+                "gold",
+                "salt",
+                "evil",
+            ],
+        ),
+        // equine.Variant.CODEC uses StringRepresentable names under ordinary NbtOps.
+        "minecraft:horse/variant" => string_enum(
+            t,
+            &[
+                "white",
+                "creamy",
+                "chestnut",
+                "brown",
+                "black",
+                "gray",
+                "dark_brown",
+            ],
+        ),
+        // Llama.Variant.CODEC uses StringRepresentable names, not LEGACY_CODEC ids.
+        "minecraft:llama/variant" => string_enum(t, &["creamy", "white", "brown", "gray"]),
         "minecraft:enchantments" | "minecraft:stored_enchantments" => enchantment_map(t, reg),
         "minecraft:tooltip_display" => tooltip_display(t, reg).map(|_| ()),
         // DataComponents.ENCHANTMENT_GLINT_OVERRIDE: Codec.BOOL through NbtOps.
@@ -312,6 +386,10 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
             .ok_or_else(|| "Not a number".into()),
         "minecraft:custom_name" | "minecraft:item_name" => super::component::decode(t),
         "minecraft:item_model" => identifier_value(t).map(|_| ()),
+        "minecraft:damage_resistant" => component_values::damage_resistant(t, reg).map(|_| ()),
+        "minecraft:use_effects" => horizon_items::item_data::ingredient_components::use_effects(t)
+            .map(|_| ())
+            .map_err(str::to_owned),
         // TypedEntityData.codec: the type is the compound's id.
         "minecraft:block_entity_data" => match t {
             Tag::Compound(c) => match c.get(&"id".into()) {

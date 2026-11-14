@@ -52,8 +52,8 @@ All preparation happens at load; candidate comparisons borrow values without
 allocating or converting them to JSON. Removal keys require registration only.
 Native registrations retain their persistent NBT validation contract.
 
-The shared decoder currently covers 44 registered built-ins:
-`cat/sound_variant`, `cat/variant`, `wolf/sound_variant`, `wolf/variant`, `container_loot`, `tooltip_display`, `tropical_fish/pattern_color`, `tropical_fish/base_color`, `cushion/color`, `recipes`, `mob_visibility`, `custom_model_data`, `wolf/collar`, `cat/collar`, `shulker/color`, `sheep/color`, `dye`, `block_state`, `use_cooldown`, `cooking_fuel`, `brewing_fuel`, `compostable`, `fox/variant`, `weapon`, `food`, `damage`, `repair_cost`, `max_damage`, `max_stack_size`, `map_id`, `rarity`, `enchantments`, `stored_enchantments`, `enchantment_glint_override`, `custom_name`, `item_name`, `item_model`, `lodestone_tracker`, `block_entity_data`, `enchantable`, `ominous_bottle_amplifier`, `potion_duration_scale`, `minimum_attack_charge`, `dyed_color`,
+The shared decoder currently covers 51 registered built-ins:
+`cat/sound_variant`, `cat/variant`, `wolf/sound_variant`, `wolf/variant`, `container_loot`, `tooltip_display`, `tropical_fish/pattern_color`, `tropical_fish/base_color`, `cushion/color`, `recipes`, `mob_visibility`, `custom_model_data`, `wolf/collar`, `cat/collar`, `shulker/color`, `sheep/color`, `dye`, `block_state`, `use_cooldown`, `cooking_fuel`, `brewing_fuel`, `compostable`, `fox/variant`, `weapon`, `food`, `damage`, `repair_cost`, `max_damage`, `max_stack_size`, `map_id`, `rarity`, `enchantments`, `stored_enchantments`, `enchantment_glint_override`, `custom_name`, `item_name`, `item_model`, `lodestone_tracker`, `block_entity_data`, `enchantable`, `ominous_bottle_amplifier`, `potion_duration_scale`, `minimum_attack_charge`, `dyed_color`, `attack_animation`, `damage_resistant`, `use_effects`, `attack_range`, `rabbit/variant`, `horse/variant`, `llama/variant`,
 in the `minecraft` namespace.
 `enchantable` requires a positive integer `value`; extra record fields are ignored
 and equivalent numeric NBT widths match, including item defaults. Map ids accept
@@ -76,7 +76,7 @@ zero (including negative zero) is false; nonzero values, fractions and NaN are
 true. Displays retain canonical byte 0 or 1.
 `dyed_color` accepts packed integer colors or three numeric RGB channels,
 matching the decoded values without copying candidate payloads.
-The other 75 persistent registered built-ins use stored-value matching while their shared
+The other 68 persistent registered built-ins use stored-value matching while their shared
 decoders are added incrementally in **#3875**. Their absence is not a load refusal.
 The transient types `creative_slot_lock`, `additional_trade_cost` and
 `map_post_processing` are refused as stored component values, not matched as opaque NBT.
@@ -113,3 +113,29 @@ Recipe keys need no registry lookup; order and duplicates are retained.
 
 The pinned 26.3 registry has 122 component types: 119 persistent and 3 transient.
 mod-registered cat/wolf variants are not matched yet.
+
+`attack_animation` accepts a record with optional `type` (`none`, `whack`,
+`stab`; default `whack`) and nonnegative integer `duration` (default 6).
+Optional JSON null fields use their defaults; the whole payload must be a map.
+JSON booleans become numeric byte flags before decoding, including durations.
+Very large JSON doubles saturate to an integer where vanilla JSON operations
+wrap; this existing conversion difference is not tightened here.
+`damage_resistant` requires `types`: a damage type id, ordered list of ids
+(including duplicates and the empty list), or a named `#tag` from the active
+frozen damage registry. Missing or null `types` is refused. Named sets compare
+by tag identity, never equal to direct sets with the same contents.
+`use_effects` has optional `can_sprint` (false), `interact_vibrations` (true),
+and `speed_multiplier` (0.2, range 0 to 1). `attack_range` has optional
+`min_reach` (0), `max_reach` (3), `min_creative_reach` (0),
+`max_creative_reach` (5), `hitbox_margin` (0.3), and `mob_factor` (1).
+The four reach fields range from 0 to 64, margin from 0 to 1, and mob factor
+from 0 to 2, inclusive. No minimum/maximum ordering check is imposed.
+These are codec defaults, not effective reach when the component is absent:
+that uses entity attributes. Optional null fields use defaults. Decoded negative
+zero, NaN and infinities are refused for bounded floats. JSON numbers are also
+accepted for boolean fields by the common NBT boundary.
+The scalar enum decoders accept exact persistent names only: rabbit uses
+`brown`, `white`, `black`, `white_splotched`, `gold`, `salt`, `evil`;
+horse uses `white`, `creamy`, `chestnut`, `brown`, `black`, `gray`, `dark_brown`;
+llama uses `creamy`, `white`, `brown`, `gray`.
+Numeric ordinals, namespaced names, case variants and null are refused.
