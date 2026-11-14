@@ -408,6 +408,10 @@ jobs:
       - name: The prebuilt SDK's Windows library builds without warnings
         id: sdk_windows
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && needs.changes.outputs.rust_required != 'false' }}
+        env:
+          # MinGW ignores mimalloc's MSVC pragmas. CFLAGS replaces cc's default warning flags,
+          # so retain -Wall/-Wextra for both mimalloc and hidapi; silence only unknown pragmas.
+          CFLAGS_x86_64_pc_windows_gnu: -Wall -Wextra -Wno-unknown-pragmas
         run: |
           started=$SECONDS
           # hidapi and libmimalloc-sys compile C for the target in their build scripts.
