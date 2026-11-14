@@ -1043,7 +1043,6 @@ fn next_component_codecs_reject_bad_records_preserve_siblings_and_presence() {
             json!({"floats":[1],"flags":[true],"strings":["x"],"colors":[[1,0,0]]}),
             vec![
                 json!({"floats":1}),
-                json!({"floats":[false]}),
                 json!({"flags":["true"]}),
                 json!({"strings":[1]}),
                 json!({"colors":[[1,0]]}),
@@ -1227,6 +1226,11 @@ fn json_booleans_are_read_as_numeric_flags_documented_leniency() {
             "minecraft:weapon",
             json!({"disable_blocking_for_seconds":false}),
             Tag::compound([("disable_blocking_for_seconds", Tag::Float(0.0f32.to_bits()))]),
+        ),
+        (
+            "minecraft:custom_model_data",
+            json!({"floats":[false]}),
+            Tag::compound([("floats", Tag::List(vec![Tag::Float(0.0f32.to_bits())]))]),
         ),
     ] {
         let source = json!({"type":"neoforge:components","items":"minecraft:paper",
