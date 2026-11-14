@@ -214,10 +214,9 @@ fn every_message_names_the_mod_the_builds_and_the_worlds() {
     assert_eq!(
         refusal("Greeter", &misfit, build),
         "Greeter doesn't fit this game.\nIt was made for aaaaaaa and this instance runs \
-         nightly-2026-11-13 (afe471c). Since then the game changed 2 things Greeter uses: the hook \
-         `player_logged_in` (changed); the method `ServerHost::give_item` (removed).\nWhat you can \
-         do: play without Greeter. It stays installed and is left out of the build; Turn off \
-         Greeter in its menu on the Mods page to keep it out."
+         nightly-2026-11-13 (afe471c). Since then the game changed 2 things that Greeter uses: the hook \
+         `player_logged_in` (changed); the method `ServerHost::give_item` (removed).\nThe game is \
+         built without Greeter, which stays installed. Ask its author for an update made for this game."
     );
     let fits = Verdict::Fits {
         made_for: made_for.clone(),
@@ -268,5 +267,5 @@ fn an_update_says_how_many_mods_fit_and_which_will_be_switched_off() {
         made_for: OTHER_BUILD.into(),
         why: "[[native.mixin]]",
     };
-    assert_eq!(short(&exact), "it changes game code ([[native.mixin]])");
+    assert_eq!(short(&exact), "it changes the game's own code");
 }

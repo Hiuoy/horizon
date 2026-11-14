@@ -398,11 +398,7 @@ impl Launcher {
         let t = self.theme;
         // The same build again: on the base it stopped on, the worlds backed up first.
         let base = stake.base.clone();
-        let stay = if stake.stay.is_empty() {
-            tr("Stay on this game build").to_string()
-        } else {
-            native_mods::fit::stay(&stake.stay)
-        };
+        let stay = tr("Don't build").to_string();
         div()
             .flex()
             .flex_col()
@@ -428,7 +424,7 @@ impl Launcher {
                     .child(
                         button(
                             "native-worlds-back-up",
-                            native_mods::fit::back_up_and_update(),
+                            native_mods::fit::back_up_and_build(),
                             Kind::Secondary,
                             &t,
                         )
@@ -623,8 +619,8 @@ impl Launcher {
                 Route::Prebuilt => (
                     "flash",
                     pal.accent,
-                    tr("Can use the prebuilt game").into(),
-                    tr("Can use the prebuilt game if one exists for your Horizon and it serves every enabled mod.").to_string(),
+                    tr("Needs no build").into(),
+                    tr("This mod uses the game as it ships, so Horizon can start without building when every enabled mod is like this.").to_string(),
                 ),
                 // Made for another build: it fits this one, and the build compiles it as usual.
                 Route::Fits { line } => ("tick-02", pal.success, tr("Fits this game").into(), line.clone()),

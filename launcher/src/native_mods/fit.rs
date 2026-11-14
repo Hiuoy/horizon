@@ -207,19 +207,19 @@ pub fn line(name: &str, verdict: &Verdict, build: &str) -> String {
             "Made for {made_for} only: it uses the game's internals, so it works on exactly that build.",
             &[("made_for", &made(made_for))],
         ),
-        Verdict::Exact { made_for, why } => trf(
-            "Made for {made_for} only: it changes game code ({table}), so it works on exactly that build.",
-            &[("made_for", &made(made_for)), ("table", why)],
+        Verdict::Exact { made_for, .. } => trf(
+            "Made for {made_for} only: it changes the game's own code, so it works on exactly that build.",
+            &[("made_for", &made(made_for))],
         ),
         Verdict::NoList { made_for } => trf(
-            "{mod}'s package was made by an older tool and doesn't say what it uses, so it works on {made_for} only. Its author can rebuild it with the current cargo horizon-mod.",
+            "{mod}'s package was made by an older tool and doesn't say what it uses, so it works on {made_for} only. Its author can rebuild it with the current mod tools.",
             &[("mod", name), ("made_for", &made(made_for))],
         ),
         Verdict::DoesNotFit { made_for, misfits } => {
             let count = misfits.len().to_string();
             if misfits.len() == 1 {
                 trf(
-                    "It was made for {made_for} and this instance runs {build}. Since then the game changed one thing {mod} uses: {items}.",
+                    "It was made for {made_for} and this instance runs {build}. Since then the game changed one thing that {mod} uses: {items}.",
                     &[
                         ("made_for", &made(made_for)),
                         ("build", build),
@@ -229,7 +229,7 @@ pub fn line(name: &str, verdict: &Verdict, build: &str) -> String {
                 )
             } else {
                 trf(
-                    "It was made for {made_for} and this instance runs {build}. Since then the game changed {count} things {mod} uses: {items}.",
+                    "It was made for {made_for} and this instance runs {build}. Since then the game changed {count} things that {mod} uses: {items}.",
                     &[
                         ("made_for", &made(made_for)),
                         ("build", build),
@@ -264,7 +264,7 @@ pub fn headline(name: &str, verdict: &Verdict) -> String {
 /// mod's menu on the Mods page has Turn off).
 pub fn actions(name: &str) -> String {
     trf(
-        "What you can do: play without {mod}. It stays installed and is left out of the build; Turn off {mod} in its menu on the Mods page to keep it out.",
+        "The game is built without {mod}, which stays installed. Ask its author for an update made for this game.",
         &[("mod", name)],
     )
 }
@@ -277,7 +277,7 @@ pub fn short(verdict: &Verdict) -> String {
         Verdict::Exact { why, .. } if *why == "internals" => {
             tr("it uses the game's internals").to_owned()
         }
-        Verdict::Exact { why, .. } => trf("it changes game code ({table})", &[("table", why)]),
+        Verdict::Exact { .. } => tr("it changes the game's own code").to_owned(),
         Verdict::NoList { .. } => tr("its package doesn't say what it uses").to_owned(),
         Verdict::DoesNotFit { misfits, .. } => changes(misfits),
         Verdict::Points { why, .. } => why.clone(),
@@ -407,6 +407,11 @@ pub fn stay(current: &str) -> String {
 /// The other choice, said on its button.
 pub fn back_up_and_update() -> &'static str {
     tr("Back up these worlds and update")
+}
+
+/// [`back_up_and_update`] on the Build panel, where nothing is being updated.
+pub fn back_up_and_build() -> &'static str {
+    tr("Back up these worlds and build without the mod")
 }
 
 #[cfg(test)]
