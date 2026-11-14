@@ -76,6 +76,7 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:attack_range",
     "minecraft:fox/variant",
     "minecraft:rabbit/variant",
+    "minecraft:horse/variant",
 ];
 
 /// Validate and decode a component into the value representation shared with stacks.
@@ -363,6 +364,17 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
                 "gold",
                 "salt",
                 "evil",
+        // equine.Variant.CODEC uses StringRepresentable names under ordinary NbtOps.
+        "minecraft:horse/variant" => string_enum(
+            t,
+            &[
+                "white",
+                "creamy",
+                "chestnut",
+                "brown",
+                "black",
+                "gray",
+                "dark_brown",
             ],
         ),
         "minecraft:enchantments" | "minecraft:stored_enchantments" => enchantment_map(t, reg),
