@@ -609,67 +609,6 @@ fn recipe_keys_equal(a: Option<&Tag>, b: Option<&Tag>) -> bool {
             .all(|(a, b)| identifier_equal(Some(a), Some(b)))
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn pet_variant_equality_borrows_normalized_registry_keys() {
-        for component in [
-            "minecraft:cat/sound_variant",
-            "minecraft:cat/variant",
-            "minecraft:wolf/sound_variant",
-            "minecraft:wolf/variant",
-        ] {
-            let mut a = ItemStack::new("minecraft:stone", 1);
-            let mut b = ItemStack::new("minecraft:stone", 1);
-            a.data_mut()
-                .set_other(component, Some(Tag::String("minecraft:classic".into())));
-            for alias in ["classic", ":classic", "minecraft:classic"] {
-                b.data_mut()
-                    .set_other(component, Some(Tag::String(alias.into())));
-                assert!(component_equal(component, &a, &b));
-            }
-            b.data_mut()
-                .set_other(component, Some(Tag::String("example:classic".into())));
-            assert!(!component_equal(component, &a, &b));
-            a.data_mut()
-                .set_other(component, Some(Tag::String("example:classic".into())));
-            assert!(component_equal(component, &a, &b));
-            a.data_mut()
-                .set_other(component, Some(Tag::String("Classic".into())));
-            b.data_mut()
-                .set_other(component, Some(Tag::String("Classic".into())));
-            assert!(!component_equal(component, &a, &b));
-            b.data_mut().set_other(component, None);
-            assert!(!component_equal(component, &a, &b));
-        }
-    }
-
-    use super::*;
-    #[test]
-    fn decoded_component_equality_borrows_maps_and_plain_text() {
-        let mut a = ItemStack::new("minecraft:stone", 1);
-        let mut b = ItemStack::new("minecraft:stone", 1);
-        a.data_mut().enchantments = vec![
-            ("minecraft:sharpness".into(), 1),
-            ("minecraft:unbreaking".into(), 2),
-        ];
-        b.data_mut().enchantments = vec![
-            ("minecraft:unbreaking".into(), 2),
-            ("minecraft:sharpness".into(), 1),
-        ];
-        assert!(component_equal("minecraft:enchantments", &a, &b));
-        a.data_mut()
-            .set_other("minecraft:item_name", Some(Tag::String("Named".into())));
-        b.data_mut().set_other(
-            "minecraft:item_name",
-            Some(Tag::compound([("text", Tag::String("Named".into()))])),
-        );
-        assert!(component_equal("minecraft:item_name", &a, &b));
-        b.data_mut().enchantments[0].1 = 3;
-        assert!(!component_equal("minecraft:enchantments", &a, &b));
-    }
-}
-
 /// Read the record without cloning its payload. Unknown record fields are ignored;
 /// present malformed optional fields are errors, not their absent-field defaults.
 pub fn lodestone_tracker(value: &Tag) -> Result<LodestoneTracker<'_>, &'static str> {
@@ -798,4 +737,65 @@ pub fn container_loot_fields(value: &Tag) -> Result<(&Tag, i64), &'static str> {
             .long_value(),
     };
     Ok((table, seed))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn pet_variant_equality_borrows_normalized_registry_keys() {
+        for component in [
+            "minecraft:cat/sound_variant",
+            "minecraft:cat/variant",
+            "minecraft:wolf/sound_variant",
+            "minecraft:wolf/variant",
+        ] {
+            let mut a = ItemStack::new("minecraft:stone", 1);
+            let mut b = ItemStack::new("minecraft:stone", 1);
+            a.data_mut()
+                .set_other(component, Some(Tag::String("minecraft:classic".into())));
+            for alias in ["classic", ":classic", "minecraft:classic"] {
+                b.data_mut()
+                    .set_other(component, Some(Tag::String(alias.into())));
+                assert!(component_equal(component, &a, &b));
+            }
+            b.data_mut()
+                .set_other(component, Some(Tag::String("example:classic".into())));
+            assert!(!component_equal(component, &a, &b));
+            a.data_mut()
+                .set_other(component, Some(Tag::String("example:classic".into())));
+            assert!(component_equal(component, &a, &b));
+            a.data_mut()
+                .set_other(component, Some(Tag::String("Classic".into())));
+            b.data_mut()
+                .set_other(component, Some(Tag::String("Classic".into())));
+            assert!(!component_equal(component, &a, &b));
+            b.data_mut().set_other(component, None);
+            assert!(!component_equal(component, &a, &b));
+        }
+    }
+
+    use super::*;
+    #[test]
+    fn decoded_component_equality_borrows_maps_and_plain_text() {
+        let mut a = ItemStack::new("minecraft:stone", 1);
+        let mut b = ItemStack::new("minecraft:stone", 1);
+        a.data_mut().enchantments = vec![
+            ("minecraft:sharpness".into(), 1),
+            ("minecraft:unbreaking".into(), 2),
+        ];
+        b.data_mut().enchantments = vec![
+            ("minecraft:unbreaking".into(), 2),
+            ("minecraft:sharpness".into(), 1),
+        ];
+        assert!(component_equal("minecraft:enchantments", &a, &b));
+        a.data_mut()
+            .set_other("minecraft:item_name", Some(Tag::String("Named".into())));
+        b.data_mut().set_other(
+            "minecraft:item_name",
+            Some(Tag::compound([("text", Tag::String("Named".into()))])),
+        );
+        assert!(component_equal("minecraft:item_name", &a, &b));
+        b.data_mut().enchantments[0].1 = 3;
+        assert!(!component_equal("minecraft:enchantments", &a, &b));
+    }
 }
