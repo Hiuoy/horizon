@@ -52,8 +52,8 @@ All preparation happens at load; candidate comparisons borrow values without
 allocating or converting them to JSON. Removal keys require registration only.
 Native registrations retain their persistent NBT validation contract.
 
-The shared decoder currently covers 41 registered built-ins:
-`container_loot`, `attack_animation`, `tooltip_display`, `tropical_fish/pattern_color`, `tropical_fish/base_color`, `cushion/color`, `recipes`, `mob_visibility`, `custom_model_data`, `wolf/collar`, `cat/collar`, `shulker/color`, `sheep/color`, `dye`, `block_state`, `use_cooldown`, `cooking_fuel`, `brewing_fuel`, `compostable`, `fox/variant`, `weapon`, `food`, `damage`, `repair_cost`, `max_damage`, `max_stack_size`, `map_id`, `rarity`, `enchantments`, `stored_enchantments`, `enchantment_glint_override`, `custom_name`, `item_name`, `item_model`, `lodestone_tracker`, `block_entity_data`, `enchantable`, `ominous_bottle_amplifier`, `potion_duration_scale`, `minimum_attack_charge`, `dyed_color`,
+The shared decoder currently covers 44 registered built-ins:
+`cat/sound_variant`, `cat/variant`, `wolf/sound_variant`, `wolf/variant`, `container_loot`, `tooltip_display`, `tropical_fish/pattern_color`, `tropical_fish/base_color`, `cushion/color`, `recipes`, `mob_visibility`, `custom_model_data`, `wolf/collar`, `cat/collar`, `shulker/color`, `sheep/color`, `dye`, `block_state`, `use_cooldown`, `cooking_fuel`, `brewing_fuel`, `compostable`, `fox/variant`, `weapon`, `food`, `damage`, `repair_cost`, `max_damage`, `max_stack_size`, `map_id`, `rarity`, `enchantments`, `stored_enchantments`, `enchantment_glint_override`, `custom_name`, `item_name`, `item_model`, `lodestone_tracker`, `block_entity_data`, `enchantable`, `ominous_bottle_amplifier`, `potion_duration_scale`, `minimum_attack_charge`, `dyed_color`,
 in the `minecraft` namespace.
 `enchantable` requires a positive integer `value`; extra record fields are ignored
 and equivalent numeric NBT widths match, including item defaults. Map ids accept
@@ -76,7 +76,7 @@ zero (including negative zero) is false; nonzero values, fractions and NaN are
 true. Displays retain canonical byte 0 or 1.
 `dyed_color` accepts packed integer colors or three numeric RGB channels,
 matching the decoded values without copying candidate payloads.
-The other 78 persistent registered built-ins use stored-value matching while their shared
+The other 75 persistent registered built-ins use stored-value matching while their shared
 decoders are added incrementally in **#3875**. Their absence is not a load refusal.
 The transient types `creative_slot_lock`, `additional_trade_cost` and
 `map_post_processing` are refused as stored component values, not matched as opaque NBT.
@@ -110,3 +110,6 @@ colors (the same strict dye palette), ordered custom model data lists, mob
 visibility holder sets against active entity data, and ordered recipe keys.
 Custom model data lists default to empty, including JSON null optional fields.
 Recipe keys need no registry lookup; order and duplicates are retained.
+
+The pinned 26.3 registry has 122 component types: 119 persistent and 3 transient.
+mod-registered cat/wolf variants are not matched yet.

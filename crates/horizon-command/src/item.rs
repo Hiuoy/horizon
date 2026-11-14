@@ -28,7 +28,6 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:cat/variant",
     "minecraft:wolf/sound_variant",
     "minecraft:wolf/variant",
-
     "minecraft:container_loot",
     "minecraft:tooltip_display",
     "minecraft:tropical_fish/pattern_color",
@@ -128,7 +127,9 @@ pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Resul
     if id == "minecraft:container_loot" {
         return container_loot(value);
     }
-    if let Some(registry) = horizon_items::properties::pet_variants::registry(id) { return horizon_items::properties::pet_variants::decode(registry, value, reg); }
+    if let Some(registry) = horizon_items::properties::pet_variants::registry(id) {
+        return horizon_items::properties::pet_variants::decode(registry, value, reg);
+    }
     decode_component(id, value, reg)?;
     if id == "minecraft:block_entity_data" {
         let Tag::Compound(_) = value else {
@@ -190,7 +191,9 @@ pub fn decoded_component_value(id: &str, value: &Tag, reg: &Registries) -> Resul
 
 /// The codecs of the item components commands commonly set.
 pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), String> {
-    if let Some(registry) = horizon_items::properties::pet_variants::registry(id) { return horizon_items::properties::pet_variants::decode(registry, t, reg).map(|_| ()); }
+    if let Some(registry) = horizon_items::properties::pet_variants::registry(id) {
+        return horizon_items::properties::pet_variants::decode(registry, t, reg).map(|_| ());
+    }
     match id {
         "minecraft:container_loot" => container_loot(t).map(|_| ()),
         "minecraft:lodestone_tracker" => lodestone_tracker(t).map(|_| ()),
