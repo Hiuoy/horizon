@@ -31,7 +31,7 @@ impl Game<'_> {
 
     /// Hand a container the guest opened over (ServerPlayer.openMenu);
     /// false when it is not one a guest can open.
-    pub(super) fn lan_open_container(&mut self, conn: u32, pos: (i32, i32, i32)) -> bool {
+    pub(in crate::game) fn lan_open_container(&mut self, conn: u32, pos: (i32, i32, i32)) -> bool {
         if pos.1 == crate::game::minecarts::CART_KEY_Y {
             return self.lan_open_vehicle_container(conn, pos);
         }
