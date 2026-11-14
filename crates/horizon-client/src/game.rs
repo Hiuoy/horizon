@@ -11493,9 +11493,10 @@ fn load_world_rest(
     // Independent tables load together, within the worker budget the settings
     // allow. Only the recipes and the stations read another table: the items.
     let load_items = || -> Result<_> {
-        let items = startup::time("rest.items", || {
+        let mut items = startup::time("rest.items", || {
             Items::load(root, registry, facts, overlay, resources.item_defaults())
         })?;
+        items.bind_component_damage_catalog(&resources.motion().health.damage);
         api_values::resolve_item_registry(&items)?;
         log::info!("load items: {:.2}s", started.elapsed().as_secs_f32());
         progress.set(7);

@@ -54,11 +54,21 @@ Native registrations retain their persistent NBT validation contract.
 
 The shared decoder currently covers `damage`, `repair_cost`, `max_damage`,
 `max_stack_size`, `rarity`, `enchantments`, `stored_enchantments`, `custom_name`,
-`item_name`, `item_model`, and `block_entity_data` in the `minecraft` namespace.
-`item_model` accepts valid resource identifiers without requiring an existing model;
-bare names and an empty namespace normalize to `minecraft`. The other 111 registered
-built-ins use stored-value matching while their shared decoders are added
-incrementally in **#3875**. Their absence is not a load refusal.
+`item_name`, `item_model`, `damage_resistant`, and `block_entity_data` in the
+`minecraft` namespace. `item_model` accepts valid resource identifiers without
+requiring an existing model; bare names and an empty namespace normalize to
+`minecraft`.
+
+`damage_resistant` requires `types`: a `#damage_type_tag`, a damage-type id, or an
+ordered list of damage-type ids (including an empty list). References must exist
+in the load's active pack/mod registry; inline damage definitions are not accepted.
+Bare names and empty namespaces normalize to `minecraft`, and unknown record
+fields are ignored. A single id equals its one-element list form; direct lists
+preserve order and duplicates, while named tags compare by tag identity, not by
+their members. Reload uses the world's frozen damage types with refreshed tags.
+
+The other 110 registered built-ins use stored-value matching while their shared
+decoders are added incrementally in **#3875**. Their absence is not a load refusal.
 
 Component ingredient displays contain the patch, including removals. Difference
 lists retain the base list and remove only items whose default stack passes the

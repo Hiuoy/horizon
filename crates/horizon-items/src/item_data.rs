@@ -1,6 +1,8 @@
 //! Item stack components beyond count and damage: enchantments, stored
 //! (book) enchantments, `repair_cost`, `custom_name`, `potion_contents` and
 //! `trim`, with their NBT form in vanilla's `components` compound.
+#[path = "item_data/component_values.rs"]
+pub mod component_values;
 #[path = "item_data/ingredient_components.rs"]
 pub mod ingredient_components;
 use crate::items::{ItemInfo, ItemStack};
