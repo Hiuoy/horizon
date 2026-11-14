@@ -75,7 +75,7 @@ impl Game<'_> {
     /// the special model renderers' answers it didn't draw.
     pub(super) fn begin_frame_draws(&self) {
         self.prepared_model_draws.borrow_mut().clear();
-        super::native_special_renderers::begin_frame();
+        super::native_special_renderers::begin_frame(std::ptr::from_ref(self) as usize);
     }
 }
 

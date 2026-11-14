@@ -54,10 +54,11 @@ pub(in crate::game) fn reload() {
     answers().kept.clear();
 }
 
-/// Once per frame, before it is drawn: the answers of stacks the last frame didn't draw are
-/// dropped, so what is kept is bounded by what is on screen.
-pub(in crate::game) fn begin_frame() {
-    answers().begin_frame();
+/// Once per frame of the view `view` (its game's address), before it is drawn: the answers of
+/// stacks no view's last frame drew are dropped, so what is kept is bounded by what is on screen.
+/// Splitscreen's views draw one after another, each keeping what it drew.
+pub(in crate::game) fn begin_frame(view: usize) {
+    answers().begin_frame(view);
 }
 
 /// What the renderer of `slot` draws for `stack` in the model node of `config`: the kept answer
@@ -76,15 +77,33 @@ pub(in crate::game) fn parts(
         return None;
     }
     answer(&ANSWERS, Arc::as_ptr(config) as usize, stack, || {
+        // A stack the API can't take is refused alone: the renderer isn't at fault.
+        use super::api_values::TryIntoApi;
+        let api_stack = stack
+            .try_into_api()
+            .map_err(|e| warn_unreadable_once(kind, &stack.item, &format!("{e:?}")))
+            .ok()?;
         let parts = guarded(kind, resolved, || {
-            use super::api_values::TryIntoApi;
-            let stack = stack
-                .try_into_api()
-                .map_err(|e| format!("the stack can't be read: {e:?}"))?;
-            resolved.inner.extract(host, &stack, config)
+            resolved.inner.extract(host, &api_stack, config)
         })?;
         Some(prepare(&parts))
     })
+}
+
+/// Says once per type and item that a stack of the item couldn't be given to the type's
+/// renderer, so it draws the missing model.
+fn warn_unreadable_once(kind: &str, item: &str, error: &str) {
+    static SEEN: Mutex<std::collections::BTreeSet<(String, String)>> =
+        Mutex::new(std::collections::BTreeSet::new());
+    if SEEN
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert((kind.to_owned(), item.to_owned()))
+    {
+        log::warn!(
+            "Horizon: a stack of {item} can't be read for the special model renderer of {kind} ({error}); it draws the missing model"
+        );
+    }
 }
 
 /// The answer for `stack` in the model node `node`: the one kept in `answers` for an equal stack,
@@ -109,21 +128,29 @@ fn answer(
 /// reload) and the stack's [`stack_hash`].
 #[derive(Default)]
 struct Answers {
-    /// The frame being drawn.
+    /// Counts the frames begun, by any view.
     frame: u64,
+    /// Each view's last two frames: when its previous one began and its current one.
+    views: FxHashMap<usize, [u64; 2]>,
     kept: FxHashMap<(usize, u64), Vec<Kept>>,
 }
+/// A view no frame of which began for this many frames (of all views) is gone.
+const VIEW_GONE_AFTER: u64 = 256;
 struct Kept {
     stack: StackView,
     prepared: PreparedParts,
-    /// The last frame that drew it.
+    /// The frame (of any view) that last drew it.
     drawn: u64,
 }
 impl Answers {
     /// The answer kept for a stack equal to `stack`, now drawn in this frame.
     fn drawn(&mut self, key: (usize, u64), stack: &StackView) -> Option<PreparedParts> {
         let frame = self.frame;
-        let kept = self.kept.get_mut(&key)?.iter_mut().find(|k| k.stack == *stack)?;
+        let kept = self
+            .kept
+            .get_mut(&key)?
+            .iter_mut()
+            .find(|k| k.stack == *stack)?;
         kept.drawn = frame;
         Some(kept.prepared.clone())
     }
@@ -134,12 +161,20 @@ impl Answers {
             drawn: self.frame,
         });
     }
-    /// Starts the next frame, keeping only the answers the one before drew.
-    fn begin_frame(&mut self) {
-        let last = self.frame;
+    /// Starts the next frame of `view`, keeping only the answers drawn since the oldest of the
+    /// views' previous frames began: what some view's last frame may have drawn.
+    fn begin_frame(&mut self, view: usize) {
         self.frame += 1;
+        let frame = self.frame;
+        // A view's first frame keeps what was drawn before it began, as if its own.
+        let starts = self.views.entry(view).or_insert([frame - 1; 2]);
+        *starts = [starts[1], frame];
+        self.views
+            .retain(|_, [_, current]| frame - *current < VIEW_GONE_AFTER);
+        let since = self.views.values().map(|[previous, _]| *previous).min();
+        let since = since.unwrap_or(frame);
         self.kept.retain(|_, kept| {
-            kept.retain(|k| k.drawn == last);
+            kept.retain(|k| k.drawn >= since);
             !kept.is_empty()
         });
     }
@@ -227,9 +262,8 @@ fn checked(parts: &[SpecialModelPart]) -> Result<Vec<SpecialPart>, String> {
         .iter()
         .map(|part| {
             let [a, b, c, d, e, f, g, h, i, j, k, l] = part.transform;
-            let pose = Mat4::from_row_major([
-                a, b, c, d, e, f, g, h, i, j, k, l, 0.0, 0.0, 0.0, 1.0,
-            ]);
+            let pose =
+                Mat4::from_row_major([a, b, c, d, e, f, g, h, i, j, k, l, 0.0, 0.0, 0.0, 1.0]);
             if !pose.is_finite() {
                 return Err(format!("{}'s transform isn't finite", part.model));
             }
@@ -283,6 +317,7 @@ mod tests {
     /// stack a frame didn't draw, or any after a reload, is asked again.
     #[test]
     fn an_unchanged_stack_is_extracted_once_across_frames() {
+        const VIEW: usize = 1;
         let answers = Mutex::<Answers>::default();
         let asked = std::cell::Cell::new(0);
         let draw = |node: usize, stack: &StackView| {
@@ -299,7 +334,7 @@ mod tests {
         let stacks: Vec<StackView> = (1..=100).map(|n| StackView::new("t:pan", n)).collect();
         let first: Vec<PreparedParts> = stacks.iter().map(|s| draw(pan, s)).collect();
         for _frame in 0..10 {
-            answers.lock().unwrap().begin_frame();
+            answers.lock().unwrap().begin_frame(VIEW);
             for (stack, first) in stacks.iter().zip(&first) {
                 assert_eq!(&draw(pan, stack), first);
             }
@@ -307,29 +342,40 @@ mod tests {
         assert_eq!(asked.get(), 100);
         // An equal stack read anew (the game builds its view every draw) is the same stack.
         let mut named = StackView::new("t:pan", 1);
-        named
-            .patch
-            .insert("minecraft:custom_name".into(), Some(serde_json::json!({"text": "Pan", "bold": true})));
+        named.patch.insert(
+            "minecraft:custom_name".into(),
+            Some(serde_json::json!({"text": "Pan", "bold": true})),
+        );
         let mut renamed = StackView::new("t:pan", 1);
-        renamed
-            .patch
-            .insert("minecraft:custom_name".into(), Some(serde_json::json!({"bold": true, "text": "Pan"})));
+        renamed.patch.insert(
+            "minecraft:custom_name".into(),
+            Some(serde_json::json!({"bold": true, "text": "Pan"})),
+        );
         assert_eq!(draw(pan, &named), draw(pan, &renamed));
         assert_eq!(asked.get(), 101);
         assert_eq!(count(draw(pot, &stacks[0])), 1);
         assert_eq!(asked.get(), 102);
         // The next frame draws only the first stack: the others are asked again after it.
-        answers.lock().unwrap().begin_frame();
+        answers.lock().unwrap().begin_frame(VIEW);
         assert_eq!(draw(pan, &stacks[0]), first[0]);
-        answers.lock().unwrap().begin_frame();
+        answers.lock().unwrap().begin_frame(VIEW);
         assert_eq!(draw(pan, &stacks[0]), first[0]);
         assert_eq!(asked.get(), 102);
         assert_eq!(count(draw(pan, &stacks[1])), 2);
         assert_eq!(asked.get(), 103);
         assert_eq!(answers.lock().unwrap().kept.len(), 2);
+        // Splitscreen: two views draw one after another, each its own stack, and neither's is
+        // dropped by the other's frame.
+        for _frame in 0..10 {
+            answers.lock().unwrap().begin_frame(VIEW);
+            assert_eq!(draw(pan, &stacks[0]), first[0]);
+            answers.lock().unwrap().begin_frame(VIEW + 1);
+            assert_eq!(count(draw(pan, &stacks[2])), 3);
+        }
+        assert_eq!(asked.get(), 104);
         answers.lock().unwrap().kept.clear();
         draw(pan, &stacks[0]);
-        assert_eq!(asked.get(), 104);
+        assert_eq!(asked.get(), 105);
     }
 
     /// An `Err`, a panic, 257 parts and a transform that isn't finite each refuse the answer
