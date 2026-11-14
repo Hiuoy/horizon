@@ -356,7 +356,7 @@ impl Launcher {
                     .items_start()
                     .justify_between()
                     .gap(px(12.))
-                    .child(text_in(13., pal.danger).flex_1().child(e.clone()))
+                    .child(text_in(13., pal.danger).flex_1().min_w_0().child(e.clone()))
                     .child(
                         button("native-show-log", "Show log", Kind::Ghost, &t).on_click(
                             cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -619,7 +619,7 @@ impl Launcher {
             )
         } else {
             match route {
-                Route::Invalid { reason } => ("alert-circle", pal.warn, tr("Needs attention").into(), reason.clone()),
+                Route::Invalid { reason } => ("information-circle", pal.warn, tr("Needs attention").into(), reason.clone()),
                 Route::Prebuilt => (
                     "flash",
                     pal.accent,
@@ -634,7 +634,7 @@ impl Launcher {
                     line,
                     actions,
                 } => (
-                    "alert-circle",
+                    "information-circle",
                     pal.warn,
                     headline.clone().into(),
                     format!("{line}\n{actions}"),
