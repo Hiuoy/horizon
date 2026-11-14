@@ -106,6 +106,18 @@ impl Launcher {
         self.native_worlds.as_ref().filter(|_| mine)
     }
 
+    /// Whether the worlds stop on screen is about mod `mod_id`: its switch and its menu's Turn
+    /// off wait for the choice, which backs up the worlds that hold its content.
+    pub(super) fn stop_names(&self, mod_id: &str) -> bool {
+        let here = self
+            .selected_instance()
+            .map(|instance| instance.id.as_str());
+        self.native_for.as_deref() == here
+            && self
+                .worlds_stop(true)
+                .is_some_and(|stake| stake.mods.iter().any(|id| id == mod_id))
+    }
+
     /// A build stopped for worlds at stake: the choice is shown, and the mods that failed to
     /// compile stay marked past it.
     pub(super) fn keep_stop(&mut self, stake: &native_mods::AtStake) {
@@ -656,7 +668,7 @@ impl Launcher {
                 Route::Prebuilt => (
                     "flash",
                     pal.accent,
-                    tr("Needs no build").into(),
+                    tr("Needs no build by itself").into(),
                     tr("This mod uses the game as it ships, so Horizon can start without building when every enabled mod is like this.").to_string(),
                 ),
                 // Made for another build: it fits this one, and the build compiles it as usual.
@@ -708,7 +720,7 @@ impl Launcher {
             let home = self.mods.home();
             // A mod the stop names is decided on the panel: turning it off here would skip the
             // backup that keeps its worlds' content.
-            let named = stop.is_some_and(|stake| stake.mods.iter().any(|id| id == mod_id));
+            let named = self.stop_names(mod_id);
             let off = {
                 let id = id.clone();
                 ui::menu_item(

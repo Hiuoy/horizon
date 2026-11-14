@@ -292,7 +292,7 @@ fn the_worlds_buttons_and_the_stopped_mod_say_what_is_so() {
     assert_eq!(back_up_and_update(2), "Back up these worlds and update");
     assert_eq!(
         actions_pending("Greeter"),
-        "The build is stopped until you choose in the Build panel; Greeter stays on until then."
+        "The build is stopped until you choose under Native mod build; Greeter stays on until then."
     );
     assert!(did_not_build_pending("Greeter").contains("stays on until you choose"));
     assert!(did_not_build_last("Greeter").contains("didn't build the last time"));

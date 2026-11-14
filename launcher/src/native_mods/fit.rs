@@ -360,7 +360,7 @@ pub fn did_not_build(name: &str) -> String {
 /// until the player chooses.
 pub fn did_not_build_pending(name: &str) -> String {
     trf(
-        "{mod} looked compatible with this game but didn't build. It stays on until you choose in the Build panel; this is for {mod}'s author to fix.",
+        "{mod} looked compatible with this game but didn't build. It stays on until you choose under Native mod build; this is for {mod}'s author to fix.",
         &[("mod", name)],
     )
 }
@@ -432,7 +432,7 @@ pub fn back_up_and_build(worlds: usize, mods: usize, unbuilt: usize) -> &'static
 
 /// The choice on the Build panel that builds nothing.
 pub fn dont_build() -> &'static str {
-    tr("Don't build")
+    tr("Don't build; keep the game as it is")
 }
 
 /// The chip's headline for a mod whose compile failed.
@@ -451,7 +451,7 @@ pub fn did_not_build_last(name: &str) -> String {
 /// [`actions`] while the stop for worlds saved with `name` is on screen.
 pub fn actions_pending(name: &str) -> String {
     trf(
-        "The build is stopped until you choose in the Build panel; {mod} stays on until then.",
+        "The build is stopped until you choose under Native mod build; {mod} stays on until then.",
         &[("mod", name)],
     )
 }
