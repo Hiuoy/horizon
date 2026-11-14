@@ -262,7 +262,7 @@ impl Game<'_> {
             menu: menu.to_owned(),
             pos,
         };
-        host.play.entry(conn).or_default().menu_heard = Some(menu.clone());
+        host.menus.entry(conn).or_default().menu_heard = Some(menu.clone());
         self.player_menu_opened(conn, menu);
     }
 
@@ -273,7 +273,7 @@ impl Game<'_> {
         let heard = self
             .lan
             .as_mut()
-            .and_then(|host| host.play.get_mut(&conn))
+            .and_then(|host| host.menus.get_mut(&conn))
             .and_then(|p| p.menu_heard.take());
         if let Some(old) = heard {
             self.player_menu_closed(conn, old);
