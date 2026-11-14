@@ -2702,14 +2702,16 @@ mod tests {
         };
         let build = "nightly-2026-11-20 (9a8b7c6)";
         // A mod that fit but didn't compile goes through the same rule as one that doesn't fit.
-        for (why, headline) in [
+        for (why, headline, unbuilt) in [
             (
                 isolate::Why::DidNotBuild,
                 "greeter looked compatible with nightly-2026-11-20 (9a8b7c6) but didn't build.",
+                vec!["greeter".to_owned()],
             ),
             (
                 isolate::Why::Unfit("why".into()),
                 "greeter doesn't fit nightly-2026-11-20 (9a8b7c6).",
+                vec![],
             ),
         ] {
             let stopped = guard_worlds(&home, &[left(why)], build, false, &|_| {});
@@ -2718,6 +2720,7 @@ mod tests {
             };
             assert!(stake.text.starts_with(headline), "{}", stake.text);
             assert_eq!(stake.worlds, ["Home"]);
+            assert_eq!(stake.unbuilt, unbuilt);
             assert_eq!(stake.backups, home.join("backups"));
             assert!(
                 !home.join("backups").exists(),

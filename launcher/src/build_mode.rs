@@ -718,8 +718,8 @@ impl Launcher {
                 busy || state == State::NoMods || worlds_pending,
                 &t,
             )
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                if this.native_step.is_some() || this.native_worlds.is_some() {
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                if this.native_step.is_some() || worlds_pending {
                     return;
                 }
                 this.mods.route_open = None;
