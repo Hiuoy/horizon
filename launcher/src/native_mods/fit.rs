@@ -363,7 +363,7 @@ pub fn did_not_build(name: &str) -> String {
 /// until the player chooses.
 pub fn did_not_build_pending(name: &str) -> String {
     trf(
-        "{mod} looked compatible with this game but didn't build. It stays on until you choose below; this is for {mod}'s author to fix.",
+        "{mod} looked compatible with this game but didn't build. It stays on until you choose; this is for {mod}'s author to fix.",
         &[("mod", name)],
     )
 }
