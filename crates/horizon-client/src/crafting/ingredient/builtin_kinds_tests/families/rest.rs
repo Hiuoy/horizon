@@ -1120,8 +1120,14 @@ fn next_component_codecs_reject_bad_records_preserve_siblings_and_presence() {
             .into_iter()
             .chain(malformed)
         {
+            // Recipe keys are a list codec: the empty list is a valid value.
+            if id == "minecraft:recipes" && payload == json!([]) {
+                continue;
+            }
             let ingredient = source(payload);
-            let error = components::validate_recipe_components(&ingredient, &items).unwrap_err();
+            let Err(error) = components::validate_recipe_components(&ingredient, &items) else {
+                panic!("expected malformed {id}: {ingredient}");
+            };
             assert!(error.contains(id), "{error}");
             let recipe = |ingredient| json!({"type":"minecraft:crafting_shapeless","ingredients":[ingredient],"result":{"id":"minecraft:diamond"}});
             let recipes = crate::crafting::Recipes::from_sources(
@@ -1153,12 +1159,17 @@ fn next_component_codecs_reject_bad_records_preserve_siblings_and_presence() {
             Tag::List(vec![]),
             Tag::String(horizon_core::nbt::JavaString(vec![0xd800])),
         ] {
+            if id == "minecraft:recipes" && value == Tag::List(vec![]) {
+                continue;
+            }
             let rule = IngredientRule::Components {
                 patch: horizon_core::nbt::Compound::from([(id.into(), value)]),
                 removed: vec![],
                 strict: false,
             };
-            let error = components::validate(&rule, &items).unwrap_err();
+            let Err(error) = components::validate(&rule, &items) else {
+                panic!("expected malformed direct NBT for {id}");
+            };
             assert!(error.contains(id), "{error}");
         }
         let strict = Ingredient::parse(&source(valid.clone()), &items).unwrap();
