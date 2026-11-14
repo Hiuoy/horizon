@@ -109,17 +109,51 @@ fn range_property_reads_zero() {
     assert!(matches!(n, ItemModelNode::Empty));
 }
 
+/// A special model type no mod registered is an error naming it, so the item definition holding
+/// it isn't loaded and the item draws the missing model; its `base` no longer stands in. A type a
+/// mod registered, vanilla's included, decodes with its model object for the mod's renderer, and
+/// vanilla's types no mod registered keep theirs.
 #[test]
-fn special_type_keeps_its_base_model() {
-    let n = node(
+fn a_special_type_draws_by_its_renderer_or_fails_by_name() {
+    let error = node(
         r#"{"type":"minecraft:special","base":"mod:item/cube","model":{"type":"mod:energy_cube"}}"#,
     )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        error.contains("unknown special model type mod:energy_cube"),
+        "{error}"
+    );
+    // A mod may replace a vanilla type: its models then go to the mod's renderer.
+    register_special_model_types(vec!["foreigntest:skillet".into(), "minecraft:bell".into()]);
+    let n = node(
+        r#"{"type":"minecraft:special","base":"foreigntest:item/pan","model":{"type":"foreigntest:skillet","handle":2}}"#,
+    )
     .unwrap();
-    assert_eq!(model_id(&n), "mod:item/cube");
+    let ItemModelNode::RegisteredSpecial {
+        base, slot, config, ..
+    } = &n
+    else {
+        panic!("not a registered special model: {n:?}");
+    };
+    assert_eq!(
+        (base.as_str(), *slot),
+        ("foreigntest:item/pan", SpecialModelSlot(0))
+    );
+    assert_eq!(config.get("handle"), Some(&horizon_core::nbt::Tag::Byte(2)));
     let n =
         node(r#"{"type":"minecraft:special","base":"a:b","model":{"type":"minecraft:shield"}}"#)
             .unwrap();
     assert!(matches!(n, ItemModelNode::Special { .. }));
+    let n = node(r#"{"type":"minecraft:special","base":"a:b","model":{"type":"minecraft:bell"}}"#)
+        .unwrap();
+    assert!(matches!(
+        &n,
+        ItemModelNode::RegisteredSpecial {
+            slot: SpecialModelSlot(1),
+            ..
+        }
+    ));
 }
 
 /// A node type no mod registered is an error naming it, so the item definition holding it isn't
