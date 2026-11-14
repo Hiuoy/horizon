@@ -1482,10 +1482,10 @@ pub fn render_with(
     );
 }
 /// [`render_with`], with the parts a mod's `render_player_pre` hid left out of the body (after Skin
-/// Customization); the armour in `extra` and the other layers keep every part. `parts`, given
-/// while the mods' post hooks want them, gets the humanoid parts as the body was drawn
-/// ([`PosedParts`](mod_api::PosedParts)); it stays None for a mob that isn't a humanoid or isn't
-/// drawn.
+/// Customization) and the layers on its own model; the armour in `extra` and the other layers keep
+/// every part. `parts`, given while the mods' post hooks want them, gets the humanoid parts as the
+/// body was drawn ([`PosedParts`](mod_api::PosedParts)); it stays None for a mob that isn't a
+/// humanoid or isn't drawn.
 #[allow(clippy::too_many_arguments)]
 pub fn render_with_hidden(
     m: &Mob,
@@ -2189,8 +2189,9 @@ fn render_visible(
     if !posable {
         skin = None;
     }
-    // The parts a mod's `render_player_pre` or `render_living_pre` hid this frame: the body draws without them,
-    // the armour and the other layers below with every part.
+    // The parts a mod's `render_player_pre` or `render_living_pre` hid this frame: the body and the
+    // layers over its own model (`getParentModel`) draw without them, the armour and the other
+    // layers below with every part.
     let mut hidden_poses = Poses::pooled();
     let body_poses: &Poses = if hidden.is_empty() {
         &poses
@@ -2286,10 +2287,27 @@ fn render_visible(
         let Some((drawn, uv)) = sprite(texture).or_else(|| Some((texture, atlas(texture)?))) else {
             continue;
         };
+        // VillagerProfessionLayer: the type layer under a profession's full hat draws on
+        // `noHatModel`, a model of its own, the others on the parent model.
+        let type_hat_shown = if matches!(m.species(), Species::Villager | Species::ZombieVillager)
+            && let Some((folder, _variant)) = layer
+                .texture
+                .split_once("/type/")
+                .or_else(|| layer.texture.split_once("/baby/"))
+        {
+            villager_client::type_hat_shown(
+                &m.extra.profession,
+                folder == "entity/zombie_villager",
+                m.extra.variant,
+            )
+        } else {
+            true
+        };
         if custom.is_none() && custom_body.is_none() && std::sync::Arc::ptr_eq(&part, &model) {
             // A layer over the body's own model (a villager's type, profession
-            // and level, a spider's eyes): `setupAnim` gives the body's poses.
-            layer_poses.copy_from(&poses);
+            // and level, a spider's eyes): `setupAnim` gives the body's poses,
+            // without the parts a mod hid on it.
+            layer_poses.copy_from(if type_hat_shown { body_poses } else { &poses });
         } else {
             layer_poses.reset(&part);
             anim::setup(m, &s, &mut layer_poses, &data.animations);
@@ -2297,18 +2315,8 @@ fn render_visible(
                 animation.run(m, &s, &mut layer_poses);
             }
         }
-        if matches!(m.species(), Species::Villager | Species::ZombieVillager)
-            && let Some((folder, _variant)) = layer
-                .texture
-                .split_once("/type/")
-                .or_else(|| layer.texture.split_once("/baby/"))
-        {
-            villager_client::apply(
-                &m.extra.profession,
-                folder == "entity/zombie_villager",
-                m.extra.variant,
-                &mut layer_poses,
-            );
+        if !type_hat_shown {
+            layer_poses.visible("head", false);
         }
         let light = if layer.full_bright {
             FULL_BRIGHT
@@ -3173,7 +3181,7 @@ mod tests {
             assert_eq!(
                 draw_armoured(hidden, &armour),
                 armoured - 8,
-                "armour and villager layers retain every part on CPU and GPU"
+                "armour retains every part on CPU and GPU"
             );
         }
         let mut parent = mod_api::HiddenParts::default();
@@ -3185,6 +3193,30 @@ mod tests {
         assert_eq!(
             gpu(&villager, parent),
             gpu(&villager, Default::default()) - 8
+        );
+        // VillagerProfessionLayer draws the type, profession and level on `getParentModel()`:
+        // a part hidden on the body leaves them too.
+        let mut kind = (*villager.kind).clone();
+        kind.layers
+            .insert("villager#main".into(), kind.model.clone());
+        let layered = Mob::new(
+            4,
+            std::sync::Arc::new(kind),
+            horizon_core::geometry::Vec3::ZERO,
+            0.0,
+        );
+        let parent_layers = layers(&layered, 0.0).len();
+        assert!(parent_layers > 0, "a villager has its type layer");
+        let mut nose = mod_api::HiddenParts::default();
+        nose.hide_named("nose").unwrap();
+        assert_eq!(
+            cpu(&layered, nose),
+            cpu(&layered, Default::default()) - 4 * (1 + parent_layers),
+            "the nose leaves the body and every layer on it"
+        );
+        assert_eq!(
+            gpu(&layered, nose),
+            gpu(&layered, Default::default()) - 4 * (1 + parent_layers) as u32,
         );
     }
 
