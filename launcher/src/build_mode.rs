@@ -99,16 +99,11 @@ fn percent(progress: Option<native_mods::Progress>) -> u32 {
     ((from + span * p.fraction.unwrap_or(0.).clamp(0., 1.)) * 100.).round() as u32
 }
 
-/// The stop for worlds at stake, when it belongs to the instance on screen (`mine`).
-fn stop_here(mine: bool, stake: Option<&native_mods::AtStake>) -> Option<&native_mods::AtStake> {
-    stake.filter(|_| mine)
-}
-
 impl Launcher {
     /// The worlds stop of the instance on screen, if one is pending: its choice row is the only
     /// way on, so the panel's Build and the menu's Build now wait for it.
     fn worlds_stop(&self, mine: bool) -> Option<&native_mods::AtStake> {
-        stop_here(mine, self.native_worlds.as_ref())
+        self.native_worlds.as_ref().filter(|_| mine)
     }
 
     /// A build stopped for worlds at stake: the choice is shown, and the mods that failed to
@@ -390,11 +385,7 @@ impl Launcher {
                     ),
             );
         }
-        if let Some(stake) = self
-            .native_worlds
-            .as_ref()
-            .filter(|_| mine && error.is_some())
-        {
+        if let Some(stake) = self.worlds_stop(mine).filter(|_| error.is_some()) {
             card = card.child(self.worlds_choice(stake, pal, cx));
         }
         if let Some(done) = self.native_done.as_ref().filter(|_| mine) {
@@ -715,27 +706,30 @@ impl Launcher {
         let mut wrap = div().relative().flex_none().child(chip);
         if open {
             let home = self.mods.home();
+            // A mod the stop names is decided on the panel: turning it off here would skip the
+            // backup that keeps its worlds' content.
+            let named = stop.is_some_and(|stake| stake.mods.iter().any(|id| id == mod_id));
             let off = {
                 let id = id.clone();
                 ui::menu_item(
                     "route-off",
                     trf("Turn off {mod}", &[("mod", mod_id)]).into(),
-                    tr("Keeps the file, leaves it out of the game").to_string(),
-                    busy,
+                    if named {
+                        tr("Choose what to do about your worlds first").to_string()
+                    } else {
+                        tr("Keeps the file, leaves it out of the game").to_string()
+                    },
+                    busy || named,
                     &t,
                 )
                 .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    if this.native_step.is_some() {
+                    if this.native_step.is_some() || named {
                         return;
                     }
                     this.mods.message =
                         horizon_launcher::browser::java::set_enabled(&home, &id, false)
                             .err()
                             .map(Err);
-                    // A stop about this mod is moot once it is off: its text would be stale.
-                    if mine && this.native_worlds.take().is_some() {
-                        this.native_error = None;
-                    }
                     this.mods.route_open = None;
                     this.instance_mods_changed();
                     cx.notify();
@@ -903,29 +897,4 @@ fn text_in(size: f32, color: Hsla) -> Div {
         .text_size(px(size))
         .line_height(px((size * 1.4).round()))
         .text_color(color)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn stake() -> native_mods::AtStake {
-        native_mods::AtStake {
-            text: String::new(),
-            worlds: vec!["Home".into()],
-            mods: vec!["greeter".into()],
-            unbuilt: vec![],
-            backups: Default::default(),
-            stay: String::new(),
-            base: String::new(),
-        }
-    }
-
-    #[test]
-    fn a_worlds_stop_belongs_to_the_instance_that_built() {
-        let stake = stake();
-        assert_eq!(stop_here(true, Some(&stake)), Some(&stake));
-        assert_eq!(stop_here(false, Some(&stake)), None);
-        assert_eq!(stop_here(true, None), None);
-    }
 }

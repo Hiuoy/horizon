@@ -1643,6 +1643,18 @@ fn judge_all(
     Ok(verdicts)
 }
 
+/// A build's refusal of the mod tools, as the player reads it. A refused signature is short on
+/// screen, so its reason goes to the build log, where a report can quote it.
+fn refused(refusal: sdk_cache::Refusal) -> String {
+    if let sdk_cache::Refusal::Unsigned { build, why } = &refusal {
+        let _ = append_log(&trf(
+            "The mod tools for {build} were refused: {why}",
+            &[("build", build), ("why", why)],
+        ));
+    }
+    refusal.to_string()
+}
+
 /// Never switch a mod off silently in a game folder with worlds (SDK design §10.1, "Worlds"):
 /// when a world in `home` was saved with a mod of `left`, the build stops with
 /// [`Failed::Worlds`] naming them, unless the player chose `back_up`; then each of those worlds
@@ -1847,7 +1859,7 @@ fn pipeline(
         }
         None
     } else {
-        Some(sdk_cache::index(&sdk_base, &revision, &keys).map_err(|r| r.to_string())?)
+        Some(sdk_cache::index(&sdk_base, &revision, &keys).map_err(refused)?)
     };
     let mut fitted: Vec<String> = Vec::new();
     if let Some(sdk) = &sdk {
@@ -2008,8 +2020,7 @@ fn pipeline(
                 let sdk = match sdk {
                     Some(sdk) => sdk,
                     None => {
-                        fetched = sdk_cache::index(&sdk_base, &revision, &keys)
-                            .map_err(|r| r.to_string())?;
+                        fetched = sdk_cache::index(&sdk_base, &revision, &keys).map_err(refused)?;
                         &fetched
                     }
                 };
@@ -2028,7 +2039,7 @@ fn pipeline(
                         })
                     },
                 )
-                .map_err(|r| r.to_string())?
+                .map_err(refused)?
             }
         };
         Some(package)
@@ -2736,6 +2747,22 @@ mod tests {
                 "nothing is backed up unasked"
             );
         }
+        // A mod that failed to compile but is in no world isn't part of the stop.
+        let Err(Failed::Worlds(stake)) = guard_worlds(
+            &home,
+            &[left(isolate::Why::DidNotBuild), {
+                let mut other = left(isolate::Why::DidNotBuild);
+                other.id = "elsewhere".into();
+                other
+            }],
+            build,
+            false,
+            &|_| {},
+        ) else {
+            panic!("a world saved with the mod must stop the build");
+        };
+        assert_eq!(stake.mods, ["greeter"]);
+        assert_eq!(stake.unbuilt, ["greeter"]);
         // Chosen: the world is backed up first, then the build may go on without the mod.
         let said = std::cell::RefCell::new(Vec::new());
         guard_worlds(
