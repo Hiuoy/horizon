@@ -74,6 +74,8 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:dyed_color",
     "minecraft:attack_animation",
     "minecraft:attack_range",
+    "minecraft:fox/variant",
+    "minecraft:rabbit/variant",
 ];
 
 /// Validate and decode a component into the value representation shared with stacks.
@@ -348,6 +350,21 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
             Ok(())
         }
         "minecraft:rarity" => string_enum(t, &["common", "uncommon", "rare", "epic"]),
+        // Fox.Variant.CODEC uses StringRepresentable names under ordinary NbtOps.
+        "minecraft:fox/variant" => string_enum(t, &["red", "snow"]),
+        // Rabbit.Variant.CODEC, not the numeric RabbitType legacy codec.
+        "minecraft:rabbit/variant" => string_enum(
+            t,
+            &[
+                "brown",
+                "white",
+                "black",
+                "white_splotched",
+                "gold",
+                "salt",
+                "evil",
+            ],
+        ),
         "minecraft:enchantments" | "minecraft:stored_enchantments" => enchantment_map(t, reg),
         "minecraft:tooltip_display" => tooltip_display(t, reg).map(|_| ()),
         // DataComponents.ENCHANTMENT_GLINT_OVERRIDE: Codec.BOOL through NbtOps.
