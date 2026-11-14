@@ -77,6 +77,7 @@ pub const DECODED_COMPONENTS: &[&str] = &[
     "minecraft:fox/variant",
     "minecraft:rabbit/variant",
     "minecraft:horse/variant",
+    "minecraft:llama/variant",
 ];
 
 /// Validate and decode a component into the value representation shared with stacks.
@@ -377,6 +378,8 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
                 "dark_brown",
             ],
         ),
+        // Llama.Variant.CODEC uses StringRepresentable names, not LEGACY_CODEC ids.
+        "minecraft:llama/variant" => string_enum(t, &["creamy", "white", "brown", "gray"]),
         "minecraft:enchantments" | "minecraft:stored_enchantments" => enchantment_map(t, reg),
         "minecraft:tooltip_display" => tooltip_display(t, reg).map(|_| ()),
         // DataComponents.ENCHANTMENT_GLINT_OVERRIDE: Codec.BOOL through NbtOps.
